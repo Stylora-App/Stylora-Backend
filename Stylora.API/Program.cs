@@ -37,7 +37,12 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// Note: HTTPS redirection disabled in development to avoid CORS preflight issues
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseCors("AllowAngular");
 app.UseAuthorization();
 

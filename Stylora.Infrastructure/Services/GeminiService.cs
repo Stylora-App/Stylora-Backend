@@ -100,58 +100,82 @@ public class GeminiService : IGeminiService
 
     public async Task<string> GenerateTryOnAsync(string personImageBase64, string clothingImageBase64)
     {
-        // Describe both images to provide semantic context
-        var personDescTask = DescribeImageAsync(personImageBase64, 
-            "Describe the person in this photo (gender, body type, pose, hair) and the background. Concise.");
-        var clothingDescTask = DescribeImageAsync(clothingImageBase64, 
-            "Describe this clothing item (type, color, material, style). Concise.");
+        var url = $"{BaseUrl}/models/gemini-2.5-flash-image:generateContent?key={_apiKey}";
 
-        await Task.WhenAll(personDescTask, clothingDescTask);
-
-        var personDesc = await personDescTask;
-        var clothingDesc = await clothingDescTask;
-
-        // Construct Prompt for image generation
-        var prompt = $@"A high-quality, photorealistic fashion shot of {personDesc} wearing {clothingDesc}. 
-        Maintain the person's exact pose, facial features, and the original background from the reference image.
-        The clothing should fit naturally. 8k resolution.";
-
-        // Use Imagen for image generation
-        var url = $"{BaseUrl}/models/imagen-3.0-generate-001:predict?key={_apiKey}";
+        var prompt = @"Take the person from the first image and dress them in the garment from the second image. 
+Generate a photorealistic image of the exact same person wearing that exact garment. 
+Keep the person's face, body, pose, hair, and background completely unchanged. 
+Only replace their clothing with the garment from the second image. 
+The garment should fit naturally on the person's body.";
 
         var request = new
         {
-            instances = new[]
+            contents = new[]
             {
                 new
                 {
-                    prompt = prompt
+                    parts = new object[]
+                    {
+                        new
+                        {
+                            inline_data = new
+                            {
+                                mime_type = "image/jpeg",
+                                data = personImageBase64
+                            }
+                        },
+                        new
+                        {
+                            inline_data = new
+                            {
+                                mime_type = "image/jpeg",
+                                data = clothingImageBase64
+                            }
+                        },
+                        new { text = prompt }
+                    }
                 }
             },
-            parameters = new
+            generationConfig = new
             {
-                sampleCount = 1
+                responseModalities = new[] { "IMAGE", "TEXT" }
             }
         };
 
         try
         {
             var response = await _httpClient.PostAsJsonAsync(url, request);
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<ImagenResponse>();
-            var imageData = result?.Predictions?.FirstOrDefault()?.BytesBase64Encoded;
             
-            if (!string.IsNullOrEmpty(imageData))
+            if (!response.IsSuccessStatusCode)
             {
-                return $"data:image/jpeg;base64,{imageData}";
+                var errorContent = await response.Content.ReadAsStringAsync();
+                throw new InvalidOperationException($"Gemini API error ({response.StatusCode}): {errorContent}");
             }
 
-            throw new InvalidOperationException("No image generated");
+            var result = await response.Content.ReadFromJsonAsync<GeminiImageResponse>();
+            var parts = result?.Candidates?.FirstOrDefault()?.Content?.Parts;
+
+            if (parts != null)
+            {
+                foreach (var part in parts)
+                {
+                    if (part.InlineData != null && !string.IsNullOrEmpty(part.InlineData.Data))
+                    {
+                        var mimeType = part.InlineData.MimeType ?? "image/png";
+                        return $"data:{mimeType};base64,{part.InlineData.Data}";
+                    }
+                }
+            }
+
+            throw new InvalidOperationException("No image generated in response");
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             throw new InvalidOperationException($"Failed to generate try-on image: {ex.Message}", ex);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            throw new InvalidOperationException($"Unexpected error during try-on generation: {ex.Message}", ex);
         }
     }
 
@@ -246,4 +270,41 @@ internal class ImagenPrediction
 {
     [JsonPropertyName("bytesBase64Encoded")]
     public string? BytesBase64Encoded { get; set; }
+}
+
+// Response models for gemini-2.5-flash-image
+internal class GeminiImageResponse
+{
+    [JsonPropertyName("candidates")]
+    public List<GeminiImageCandidate>? Candidates { get; set; }
+}
+
+internal class GeminiImageCandidate
+{
+    [JsonPropertyName("content")]
+    public GeminiImageContent? Content { get; set; }
+}
+
+internal class GeminiImageContent
+{
+    [JsonPropertyName("parts")]
+    public List<GeminiImagePart>? Parts { get; set; }
+}
+
+internal class GeminiImagePart
+{
+    [JsonPropertyName("text")]
+    public string? Text { get; set; }
+
+    [JsonPropertyName("inlineData")]
+    public GeminiInlineData? InlineData { get; set; }
+}
+
+internal class GeminiInlineData
+{
+    [JsonPropertyName("mimeType")]
+    public string? MimeType { get; set; }
+
+    [JsonPropertyName("data")]
+    public string? Data { get; set; }
 }

@@ -23,17 +23,6 @@ public class WardrobeService
 
     public async Task<WardrobeItemDto> AddItemAsync(string userId, CreateWardrobeItemRequest request)
     {
-        // Analyze the clothing image to get description
-        string description = string.Empty;
-        try
-        {
-            description = await _geminiService.DescribeClothingAsync(request.Image);
-        }
-        catch
-        {
-            // Description is optional, continue without it
-        }
-
         if (!Enum.TryParse<ClothingCategory>(request.Category, true, out var category))
         {
             category = ClothingCategory.Top;
@@ -44,7 +33,7 @@ public class WardrobeService
             Image = request.Image,
             Category = category,
             Tags = request.Tags,
-            Description = description
+            Description = null
         };
 
         var savedItem = await _wardrobeRepository.AddItemAsync(userId, item);
