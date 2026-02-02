@@ -9,6 +9,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    {
+        Title = "Stylora API",
+        Version = "v1",
+        Description = "AI-powered wardrobe and outfit management API"
+    });
+});
 
 builder.Services.AddCors(options =>
 {
@@ -83,6 +92,12 @@ using (var scope = app.Services.CreateScope())
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Stylora API v1");
+        options.RoutePrefix = "swagger";
+    });
 }
 
 if (!app.Environment.IsDevelopment())
