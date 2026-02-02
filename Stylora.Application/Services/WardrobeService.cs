@@ -30,10 +30,10 @@ public class WardrobeService
 
         var item = new WardrobeItem
         {
-            Image = request.Image,
+            ImagePath = request.Image,
             Category = category,
-            Tags = request.Tags,
-            Description = null
+            Description = request.Description,
+            Brand = request.Brand
         };
 
         var savedItem = await _wardrobeRepository.AddItemAsync(userId, item);
@@ -57,8 +57,9 @@ public class WardrobeService
         {
             Season = profile.Season,
             SubSeason = profile.SubSeason,
-            Palette = profile.Palette,
-            Name = profile.Name
+            Palette = profile.PaletteColors?.Select(pc => pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            DisplayName = profile.DisplayName,
+            PreferredStyle = profile.PreferredStyle
         };
     }
 
@@ -68,8 +69,8 @@ public class WardrobeService
         {
             Season = profileDto.Season,
             SubSeason = profileDto.SubSeason,
-            Palette = profileDto.Palette,
-            Name = profileDto.Name
+            DisplayName = profileDto.DisplayName,
+            PreferredStyle = profileDto.PreferredStyle
         };
 
         var updated = await _wardrobeRepository.UpdateUserProfileAsync(userId, profile);
@@ -77,8 +78,9 @@ public class WardrobeService
         {
             Season = updated.Season,
             SubSeason = updated.SubSeason,
-            Palette = updated.Palette,
-            Name = updated.Name
+            Palette = updated.PaletteColors?.Select(pc => pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            DisplayName = updated.DisplayName,
+            PreferredStyle = updated.PreferredStyle
         };
     }
 
@@ -86,13 +88,14 @@ public class WardrobeService
     {
         return new WardrobeItemDto
         {
-            Id = item.Id,
-            Image = item.Image,
+            Id = item.Id.ToString(),
+            Image = item.ImagePath,
             Category = item.Category.ToString().ToLower(),
-            Tags = item.Tags,
-            Color = item.Color,
-            WearCount = item.WearCount,
-            LastWorn = item.LastWorn?.ToString("o"),
+            Tags = item.WardrobeItemTags?.Select(wt => wt.Tag?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            Color = item.Color?.Name,
+            Brand = item.Brand,
+            WearCount = item.WearLogs?.Count ?? 0,
+            LastWorn = item.WearLogs?.OrderByDescending(w => w.WornAt).FirstOrDefault()?.WornAt.ToString("o"),
             Description = item.Description
         };
     }

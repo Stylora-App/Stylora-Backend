@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Stylora.Application.DTOs;
 using Stylora.Application.Services;
@@ -6,6 +7,7 @@ namespace Stylora.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class TryOnController : ControllerBase
 {
     private readonly TryOnService _tryOnService;

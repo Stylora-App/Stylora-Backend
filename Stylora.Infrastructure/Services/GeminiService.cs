@@ -71,12 +71,21 @@ public class GeminiService : IGeminiService
         var text = await GenerateContentAsync(prompt, imageBase64);
         text = CleanJsonResponse(text);
 
-        var result = JsonSerializer.Deserialize<SeasonAnalysisResult>(text, new JsonSerializerOptions
+        var rawResult = JsonSerializer.Deserialize<SeasonAnalysisRaw>(text, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         });
 
-        return result ?? new SeasonAnalysisResult();
+        // Convert to domain entity
+        var result = new SeasonAnalysisResult
+        {
+            Season = rawResult?.Season ?? "",
+            SubSeason = rawResult?.SubSeason ?? "",
+            Description = rawResult?.Description ?? "",
+            BestMetals = rawResult?.BestMetals ?? ""
+        };
+
+        return result;
     }
 
     public async Task<string> DescribeClothingAsync(string imageBase64)
@@ -185,8 +194,8 @@ The garment should fit naturally on the person's body.";
         { 
             id = i.Id, 
             type = i.Category.ToString().ToLower(), 
-            tags = i.Tags, 
-            color = i.Color 
+            description = i.Description,
+            color = i.Color?.Name
         });
         
         var itemsJson = JsonSerializer.Serialize(items);
@@ -206,12 +215,35 @@ The garment should fit naturally on the person's body.";
         var text = await GenerateContentAsync(prompt);
         text = CleanJsonResponse(text);
 
-        var result = JsonSerializer.Deserialize<OutfitSuggestion>(text, new JsonSerializerOptions
+        var rawResult = JsonSerializer.Deserialize<OutfitSuggestionRaw>(text, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         });
 
-        return result ?? new OutfitSuggestion();
+        // Convert raw response to domain entity with OutfitItems
+        var suggestion = new OutfitSuggestion
+        {
+            Reasoning = rawResult?.Reasoning ?? "",
+            StyleTip = rawResult?.StyleTip ?? "",
+            Occasion = occasion,
+            OutfitItems = []
+        };
+
+        // Add outfit items based on the raw response
+        if (!string.IsNullOrEmpty(rawResult?.TopId) && Guid.TryParse(rawResult.TopId, out var topGuid))
+        {
+            suggestion.OutfitItems.Add(new OutfitItem { WardrobeItemId = topGuid, ItemRole = "Top", DisplayOrder = 1 });
+        }
+        if (!string.IsNullOrEmpty(rawResult?.BottomId) && Guid.TryParse(rawResult.BottomId, out var bottomGuid))
+        {
+            suggestion.OutfitItems.Add(new OutfitItem { WardrobeItemId = bottomGuid, ItemRole = "Bottom", DisplayOrder = 2 });
+        }
+        if (!string.IsNullOrEmpty(rawResult?.ShoeId) && Guid.TryParse(rawResult.ShoeId, out var shoeGuid))
+        {
+            suggestion.OutfitItems.Add(new OutfitItem { WardrobeItemId = shoeGuid, ItemRole = "Shoes", DisplayOrder = 3 });
+        }
+
+        return suggestion;
     }
 
     private static string CleanJsonResponse(string text)
@@ -307,4 +339,23 @@ internal class GeminiInlineData
 
     [JsonPropertyName("data")]
     public string? Data { get; set; }
+}
+
+// Raw response models for parsing Gemini API responses
+internal class SeasonAnalysisRaw
+{
+    public string? Season { get; set; }
+    public string? SubSeason { get; set; }
+    public string? Description { get; set; }
+    public List<string>? RecommendedColors { get; set; }
+    public string? BestMetals { get; set; }
+}
+
+internal class OutfitSuggestionRaw
+{
+    public string? TopId { get; set; }
+    public string? BottomId { get; set; }
+    public string? ShoeId { get; set; }
+    public string? Reasoning { get; set; }
+    public string? StyleTip { get; set; }
 }

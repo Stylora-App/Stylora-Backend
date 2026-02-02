@@ -2,14 +2,29 @@ namespace Stylora.Domain.Entities;
 
 public class WardrobeItem
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string Image { get; set; } = string.Empty; // Base64
+    public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    
+    public string ImagePath { get; set; } = string.Empty;
     public ClothingCategory Category { get; set; }
-    public List<string> Tags { get; set; } = [];
-    public string? Color { get; set; }
-    public int WearCount { get; set; }
-    public DateTime? LastWorn { get; set; }
     public string? Description { get; set; }
+    public string? Brand { get; set; }
+    
+    // Reference to normalized Color entity (3NF)
+    public Guid? ColorId { get; set; }
+    public Color? Color { get; set; }
+    
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    
+    // Navigation properties
+    public ICollection<WardrobeItemTag> WardrobeItemTags { get; set; } = [];
+    public ICollection<WearLog> WearLogs { get; set; } = [];
+    public ICollection<TryOnSession> TryOnSessions { get; set; } = [];
+    
+    // Outfit references (items can be part of multiple outfits)
+    public ICollection<OutfitItem> OutfitItems { get; set; } = [];
 }
 
 public enum ClothingCategory
@@ -18,5 +33,7 @@ public enum ClothingCategory
     Bottom,
     Shoes,
     Accessory,
-    FullBody
+    FullBody,
+    Outerwear,
+    Bag
 }

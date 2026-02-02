@@ -7,6 +7,7 @@ public class SeasonAnalysisRequest
 
 public class SeasonAnalysisResponse
 {
+    public string? Id { get; set; }
     public string Season { get; set; } = string.Empty;
     public string SubSeason { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;

@@ -9,9 +9,12 @@ public class OutfitSuggestionRequest
 
 public class OutfitSuggestionResponse
 {
+    public string? Id { get; set; }
     public string? TopId { get; set; }
     public string? BottomId { get; set; }
     public string? ShoeId { get; set; }
+    public string? Occasion { get; set; }
+    public string? Weather { get; set; }
     public string Reasoning { get; set; } = string.Empty;
     public string StyleTip { get; set; } = string.Empty;
 }
