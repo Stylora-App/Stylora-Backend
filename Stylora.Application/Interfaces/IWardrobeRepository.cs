@@ -10,6 +10,6 @@ public interface IWardrobeRepository
     Task<bool> DeleteItemAsync(string userId, string itemId);
     Task<WardrobeItem?> UpdateItemAsync(string userId, WardrobeItem item);
     Task<UserProfile> GetUserProfileAsync(string userId);
-    Task<UserProfile> UpdateUserProfileAsync(string userId, UserProfile profile);
+    Task<UserProfile> UpdateUserProfileAsync(string userId, UserProfile profile, List<string>? paletteHexCodes = null);
     Task LogWearAsync(string userId, string itemId);
 }

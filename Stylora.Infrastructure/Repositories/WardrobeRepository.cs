@@ -133,7 +133,7 @@ public class WardrobeRepository : IWardrobeRepository
         return profile;
     }
 
-    public async Task<UserProfile> UpdateUserProfileAsync(string userId, UserProfile profile)
+    public async Task<UserProfile> UpdateUserProfileAsync(string userId, UserProfile profile, List<string>? paletteHexCodes = null)
     {
         if (!Guid.TryParse(userId, out var userGuid))
             throw new ArgumentException("Invalid user ID", nameof(userId));
@@ -154,6 +154,7 @@ public class WardrobeRepository : IWardrobeRepository
         }
 
         var existingProfile = await _context.UserProfiles
+            .Include(p => p.PaletteColors)
             .FirstOrDefaultAsync(p => p.UserId == userGuid);
 
         if (existingProfile == null)
@@ -162,6 +163,7 @@ public class WardrobeRepository : IWardrobeRepository
             profile.UserId = userGuid;
             profile.CreatedAt = DateTime.UtcNow;
             _context.UserProfiles.Add(profile);
+            existingProfile = profile;
         }
         else
         {
@@ -171,11 +173,52 @@ public class WardrobeRepository : IWardrobeRepository
             existingProfile.AvatarPath = profile.AvatarPath;
             existingProfile.PreferredStyle = profile.PreferredStyle;
             existingProfile.UpdatedAt = DateTime.UtcNow;
-            profile = existingProfile;
+        }
+
+        // Handle palette colors if provided
+        if (paletteHexCodes != null)
+        {
+            // Remove existing palette colors
+            if (existingProfile.PaletteColors?.Any() == true)
+            {
+                _context.UserPaletteColors.RemoveRange(existingProfile.PaletteColors);
+            }
+
+            // Add new palette colors
+            for (int i = 0; i < paletteHexCodes.Count; i++)
+            {
+                var hexCode = paletteHexCodes[i];
+                
+                // Find or create the color
+                var color = await _context.Colors.FirstOrDefaultAsync(c => c.HexCode == hexCode);
+                if (color == null)
+                {
+                    color = new Color
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = hexCode, // Use hex code as name
+                        HexCode = hexCode
+                    };
+                    _context.Colors.Add(color);
+                }
+
+                var paletteColor = new UserPaletteColor
+                {
+                    UserProfileId = existingProfile.Id,
+                    ColorId = color.Id,
+                    DisplayOrder = i
+                };
+                _context.UserPaletteColors.Add(paletteColor);
+            }
         }
 
         await _context.SaveChangesAsync();
-        return profile;
+        
+        // Reload with colors
+        return await _context.UserProfiles
+            .Include(p => p.PaletteColors)
+                .ThenInclude(pc => pc.Color)
+            .FirstAsync(p => p.Id == existingProfile.Id);
     }
 
     public async Task LogWearAsync(string userId, string itemId)
