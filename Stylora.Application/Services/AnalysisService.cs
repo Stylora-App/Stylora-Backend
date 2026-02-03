@@ -50,7 +50,7 @@ public class AnalysisService
             Season = result.Season,
             SubSeason = result.SubSeason,
             Description = result.Description,
-            RecommendedColors = result.RecommendedColors?.Select(rc => rc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            RecommendedColors = result.RecommendedColors?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
             BestMetals = result.BestMetals
         };
     }
@@ -66,7 +66,7 @@ public class AnalysisService
             Season = r.Season,
             SubSeason = r.SubSeason,
             Description = r.Description,
-            RecommendedColors = r.RecommendedColors?.Select(rc => rc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            RecommendedColors = r.RecommendedColors?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
             BestMetals = r.BestMetals
         });
     }
@@ -84,7 +84,7 @@ public class AnalysisService
             Season = result.Season,
             SubSeason = result.SubSeason,
             Description = result.Description,
-            RecommendedColors = result.RecommendedColors?.Select(rc => rc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            RecommendedColors = result.RecommendedColors?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
             BestMetals = result.BestMetals
         };
     }
@@ -94,7 +94,11 @@ public class AnalysisService
         var profile = new UserProfile
         {
             Season = analysis.Season,
-            SubSeason = analysis.SubSeason
+            SubSeason = analysis.SubSeason,
+            PaletteColors = analysis.RecommendedColors?.Select(hexCode => new UserPaletteColor
+            {
+                Color = new Color { Name = hexCode, HexCode = hexCode }
+            }).ToList() ?? []
         };
 
         var updatedProfile = await _wardrobeRepository.UpdateUserProfileAsync(userId, profile);
@@ -103,7 +107,7 @@ public class AnalysisService
         {
             Season = updatedProfile.Season,
             SubSeason = updatedProfile.SubSeason,
-            Palette = updatedProfile.PaletteColors?.Select(pc => pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            Palette = updatedProfile.PaletteColors?.Select(pc => pc.Color?.HexCode ?? pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
             DisplayName = updatedProfile.DisplayName,
             PreferredStyle = updatedProfile.PreferredStyle
         };

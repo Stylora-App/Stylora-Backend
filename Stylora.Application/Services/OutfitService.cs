@@ -36,18 +36,28 @@ public class OutfitService
             {
                 Id = Guid.TryParse(dto.Id, out var id) ? id : Guid.NewGuid(),
                 Category = category,
-                Description = dto.Description
+                Description = dto.Description,
+                WardrobeItemTags = dto.Tags?.Select(tagName => new WardrobeItemTag
+                {
+                    Tag = new Tag { Name = tagName }
+                }).ToList() ?? []
             };
         });
+
+        // Get user's color palette from their profile
+        var userGuid = await GetOrCreateUserGuidAsync(userId);
+        var userProfile = await _wardrobeRepository.GetUserProfileAsync(userId);
+        var userColors = userProfile?.PaletteColors?.
+            Select(pc => pc.Color?.HexCode ?? pc.Color?.Name ?? "")
+            .Where(c => !string.IsNullOrEmpty(c))
+            .ToList();
 
         var suggestion = await _geminiService.SuggestOutfitAsync(
             wardrobeItems,
             request.Occasion,
-            request.Weather
+            request.Weather,
+            userColors
         );
-
-        // Get or create user
-        var userGuid = await GetOrCreateUserGuidAsync(userId);
 
         // Extract item IDs from OutfitItems collection
         var topItem = suggestion.OutfitItems?.FirstOrDefault(oi => oi.ItemRole == "Top");

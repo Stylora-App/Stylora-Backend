@@ -57,7 +57,7 @@ public class WardrobeService
         {
             Season = profile.Season,
             SubSeason = profile.SubSeason,
-            Palette = profile.PaletteColors?.Select(pc => pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            Palette = profile.PaletteColors?.Select(pc => pc.Color?.HexCode ?? pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
             DisplayName = profile.DisplayName,
             PreferredStyle = profile.PreferredStyle
         };
@@ -78,7 +78,7 @@ public class WardrobeService
         {
             Season = updated.Season,
             SubSeason = updated.SubSeason,
-            Palette = updated.PaletteColors?.Select(pc => pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
+            Palette = updated.PaletteColors?.Select(pc => pc.Color?.HexCode ?? pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
             DisplayName = updated.DisplayName,
             PreferredStyle = updated.PreferredStyle
         };

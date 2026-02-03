@@ -58,13 +58,13 @@ public class GeminiService : IGeminiService
     {
         var prompt = @"Analyze this person's skin undertone, eye color, and hair color strictly according to Armochromia theory. 
         Determine their seasonal color palette (Spring, Summer, Autumn, Winter) and specific sub-season (e.g., Deep Autumn, Light Summer).
-        Provide a list of recommended colors (hex codes) and a brief explanation.
+        Provide a list of 8-12 recommended colors as hex codes (e.g., #FF5733) and a brief explanation.
         Return JSON with the following structure:
         {
             ""season"": ""string"",
             ""subSeason"": ""string"",
             ""description"": ""string"",
-            ""recommendedColors"": [""#hexcode1"", ""#hexcode2""],
+            ""recommendedColors"": [""#hexcode1"", ""#hexcode2"", ""#hexcode3"", ...],
             ""bestMetals"": ""string""
         }";
 
@@ -76,13 +76,17 @@ public class GeminiService : IGeminiService
             PropertyNameCaseInsensitive = true
         });
 
-        // Convert to domain entity
+        // Convert to domain entity with hex codes
         var result = new SeasonAnalysisResult
         {
             Season = rawResult?.Season ?? "",
             SubSeason = rawResult?.SubSeason ?? "",
             Description = rawResult?.Description ?? "",
-            BestMetals = rawResult?.BestMetals ?? ""
+            BestMetals = rawResult?.BestMetals ?? "",
+            RecommendedColors = rawResult?.RecommendedColors?.Select(hexCode => new RecommendedColor
+            {
+                Color = new Color { Name = hexCode, HexCode = hexCode }
+            }).ToList() ?? []
         };
 
         return result;
@@ -188,21 +192,29 @@ The garment should fit naturally on the person's body.";
         }
     }
 
-    public async Task<OutfitSuggestion> SuggestOutfitAsync(IEnumerable<WardrobeItem> wardrobeItems, string occasion, string weather)
+    public async Task<OutfitSuggestion> SuggestOutfitAsync(IEnumerable<WardrobeItem> wardrobeItems, string occasion, string weather, List<string>? userColors = null)
     {
         var items = wardrobeItems.Select(i => new 
         { 
             id = i.Id, 
             type = i.Category.ToString().ToLower(), 
             description = i.Description,
+            tags = i.WardrobeItemTags?.Select(wt => wt.Tag?.Name ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>(),
             color = i.Color?.Name
         });
         
         var itemsJson = JsonSerializer.Serialize(items);
+        var userColorsText = userColors != null && userColors.Any() 
+            ? $"\nThe user's personal color palette (from their season analysis): {string.Join(", ", userColors)}. Prioritize outfits that complement these colors."
+            : "";
 
         var prompt = $@"Given these wardrobe items: {itemsJson}.
+        Each item includes: id, type (category), description (AI-generated description of the garment), tags (user-provided labels like 'casual', 'formal'), and color (if known).
+        {userColorsText}
         Suggest one complete outfit for a {occasion} occasion where the weather is {weather}.
-        Select specific Item IDs from the list. Explain why it works.
+        Select specific Item IDs from the list. The outfit should work harmoniously with the user's color palette if provided.
+        Consider the item descriptions and tags to understand what each garment looks like - do NOT assume or guess.
+        Explain why this outfit works well together and provide a style tip.
         Return JSON with the following structure:
         {{
             ""topId"": ""string"",
