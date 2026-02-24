@@ -30,4 +30,5 @@ public class UserProfileDto
     public List<string> Palette { get; set; } = [];
     public string? DisplayName { get; set; }
     public string? PreferredStyle { get; set; }
+    public string? ProfilePicture { get; set; }
 }

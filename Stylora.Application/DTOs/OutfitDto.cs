@@ -15,6 +15,6 @@ public class OutfitSuggestionResponse
     public string? ShoeId { get; set; }
     public string? Occasion { get; set; }
     public string? Weather { get; set; }
-    public string Reasoning { get; set; } = string.Empty;
-    public string StyleTip { get; set; } = string.Empty;
+    public string? Reasoning { get; set; }
+    public string? StyleTip { get; set; }
 }

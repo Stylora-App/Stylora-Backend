@@ -56,7 +56,7 @@ public class StyloraDbContext : DbContext
             entity.Property(e => e.Season).HasMaxLength(50);
             entity.Property(e => e.SubSeason).HasMaxLength(50);
             entity.Property(e => e.PreferredStyle).HasMaxLength(100);
-            entity.Property(e => e.AvatarPath).HasMaxLength(500);
+            entity.Property(e => e.AvatarPath).HasColumnType("text");
         });
 
         // WardrobeItem configuration

@@ -59,7 +59,8 @@ public class WardrobeService
             SubSeason = profile.SubSeason,
             Palette = profile.PaletteColors?.OrderBy(pc => pc.DisplayOrder).Select(pc => pc.Color?.HexCode ?? pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
             DisplayName = profile.DisplayName,
-            PreferredStyle = profile.PreferredStyle
+            PreferredStyle = profile.PreferredStyle,
+            ProfilePicture = profile.AvatarPath
         };
     }
 
@@ -70,7 +71,8 @@ public class WardrobeService
             Season = profileDto.Season,
             SubSeason = profileDto.SubSeason,
             DisplayName = profileDto.DisplayName,
-            PreferredStyle = profileDto.PreferredStyle
+            PreferredStyle = profileDto.PreferredStyle,
+            AvatarPath = profileDto.ProfilePicture
         };
 
         var updated = await _wardrobeRepository.UpdateUserProfileAsync(userId, profile, profileDto.Palette);
@@ -80,7 +82,8 @@ public class WardrobeService
             SubSeason = updated.SubSeason,
             Palette = updated.PaletteColors?.OrderBy(pc => pc.DisplayOrder).Select(pc => pc.Color?.HexCode ?? pc.Color?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? [],
             DisplayName = updated.DisplayName,
-            PreferredStyle = updated.PreferredStyle
+            PreferredStyle = updated.PreferredStyle,
+            ProfilePicture = updated.AvatarPath
         };
     }
 
