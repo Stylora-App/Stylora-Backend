@@ -4,6 +4,22 @@ using Stylora.Application;
 using Stylora.Infrastructure;
 using Stylora.Infrastructure.Data;
 
+// Load .env file from project root if it exists
+var envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", ".env");
+if (File.Exists(envPath))
+{
+    foreach (var line in File.ReadAllLines(envPath))
+    {
+        var trimmed = line.Trim();
+        if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#')) continue;
+        var idx = trimmed.IndexOf('=');
+        if (idx <= 0) continue;
+        var key = trimmed[..idx].Trim();
+        var value = trimmed[(idx + 1)..].Trim();
+        Environment.SetEnvironmentVariable(key, value);
+    }
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
@@ -62,9 +78,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
 builder.Services.AddAuthorization();
 
-var geminiApiKey = builder.Configuration["GeminiApiKey"] ?? 
-                   Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? 
-                   "";
+var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? 
+                   builder.Configuration["GeminiApiKey"] ?? 
+                   throw new InvalidOperationException(
+                       "Gemini API key not found. Set the GEMINI_API_KEY environment variable or add it to .env file.");
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
                        throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");

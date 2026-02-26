@@ -48,7 +48,13 @@ public class GeminiService : IGeminiService
         };
 
         var response = await _httpClient.PostAsJsonAsync(url, request);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException(
+                $"Gemini API error ({response.StatusCode}): {errorBody}. " +
+                "Verify your GEMINI_API_KEY is valid and the Generative Language API is enabled.");
+        }
 
         var result = await response.Content.ReadFromJsonAsync<GeminiResponse>();
         return result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "";
@@ -162,7 +168,9 @@ The garment should fit naturally on the person's body.";
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                throw new InvalidOperationException($"Gemini API error ({response.StatusCode}): {errorContent}");
+                throw new InvalidOperationException(
+                    $"Gemini API error ({response.StatusCode}): {errorContent}. " +
+                    "Verify your GEMINI_API_KEY is valid and the Generative Language API is enabled.");
             }
 
             var result = await response.Content.ReadFromJsonAsync<GeminiImageResponse>();
