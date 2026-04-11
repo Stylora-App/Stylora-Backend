@@ -4,7 +4,7 @@ using Stylora.Domain.Entities;
 
 namespace Stylora.Application.Services;
 
-public class AnalysisService
+public class AnalysisService : IAnalysisService
 {
     private readonly IGeminiService _geminiService;
     private readonly ISeasonAnalysisRepository _analysisRepository;
@@ -83,6 +83,6 @@ public class AnalysisService
         var user = await _userRepository.GetByIdWithAnalysisAsync(userGuid)
             ?? throw new InvalidOperationException("User not found.");
 
-        return WardrobeService.MapToProfileDto(user);
+        return UserService.BuildProfileDto(user);
     }
 }

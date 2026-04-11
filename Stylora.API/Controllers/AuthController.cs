@@ -13,10 +13,12 @@ namespace Stylora.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly IUserService _userService;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, IUserService userService)
     {
         _authService = authService;
+        _userService = userService;
     }
 
     [HttpPost("register")]
@@ -54,16 +56,7 @@ public class AuthController : ControllerBase
             {
                 Success = true,
                 Message = "Registration successful.",
-                User = new UserDto
-                {
-                    Id = user.Id,
-                    Email = user.Email,
-                    FirstName = user.FirstName,
-                    LastName = user.LastName,
-                    ProfilePicture = user.ProfilePicture,
-                    Style = user.Style?.ToString().ToLowerInvariant(),
-                    CreatedAt = user.CreatedAt
-                }
+                User = _userService.MapToUserDto(user)
             });
         }
         catch (InvalidOperationException ex)
@@ -106,16 +99,7 @@ public class AuthController : ControllerBase
         {
             Success = true,
             Message = "Login successful.",
-            User = new UserDto
-            {
-                Id = user.Id,
-                Email = user.Email,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                ProfilePicture = user.ProfilePicture,
-                Style = user.Style?.ToString().ToLowerInvariant(),
-                CreatedAt = user.CreatedAt
-            }
+            User = _userService.MapToUserDto(user)
         });
     }
 
@@ -161,16 +145,7 @@ public class AuthController : ControllerBase
         return Ok(new AuthResponse
         {
             Success = true,
-            User = new UserDto
-            {
-                Id = user.Id,
-                Email = user.Email,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                ProfilePicture = user.ProfilePicture,
-                Style = user.Style?.ToString().ToLowerInvariant(),
-                CreatedAt = user.CreatedAt
-            }
+            User = _userService.MapToUserDto(user)
         });
     }
 

@@ -3,7 +3,7 @@ using Stylora.Application.Interfaces;
 
 namespace Stylora.Application.Services;
 
-public class TryOnService
+public class TryOnService : ITryOnService
 {
     private readonly IGeminiService _geminiService;
 

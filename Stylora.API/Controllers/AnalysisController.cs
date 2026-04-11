@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Stylora.Application.DTOs;
-using Stylora.Application.Services;
+using Stylora.Application.Interfaces;
 
 namespace Stylora.API.Controllers;
 
@@ -10,9 +10,9 @@ namespace Stylora.API.Controllers;
 [Authorize]
 public class AnalysisController : BaseApiController
 {
-    private readonly AnalysisService _analysisService;
+    private readonly IAnalysisService _analysisService;
 
-    public AnalysisController(AnalysisService analysisService)
+    public AnalysisController(IAnalysisService analysisService)
     {
         _analysisService = analysisService;
     }

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Stylora.Application.DTOs;
-using Stylora.Application.Services;
+using Stylora.Application.Interfaces;
 
 namespace Stylora.API.Controllers;
 
@@ -10,9 +10,9 @@ namespace Stylora.API.Controllers;
 [Authorize]
 public class WardrobeController : BaseApiController
 {
-    private readonly WardrobeService _wardrobeService;
+    private readonly IWardrobeService _wardrobeService;
 
-    public WardrobeController(WardrobeService wardrobeService)
+    public WardrobeController(IWardrobeService wardrobeService)
     {
         _wardrobeService = wardrobeService;
     }
@@ -47,19 +47,5 @@ public class WardrobeController : BaseApiController
     {
         await _wardrobeService.IncrementWornCountAsync(GetUserId(), id);
         return Ok();
-    }
-
-    [HttpGet("profile")]
-    public async Task<ActionResult<UserProfileDto>> GetProfile()
-    {
-        var profile = await _wardrobeService.GetUserProfileAsync(GetUserId());
-        return Ok(profile);
-    }
-
-    [HttpPut("profile")]
-    public async Task<ActionResult<UserProfileDto>> UpdateProfile([FromBody] UpdateProfileRequest request)
-    {
-        var updated = await _wardrobeService.UpdateUserProfileAsync(GetUserId(), request);
-        return Ok(updated);
     }
 }

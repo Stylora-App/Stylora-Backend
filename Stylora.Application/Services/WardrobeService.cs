@@ -5,15 +5,13 @@ using Stylora.Domain.Enums;
 
 namespace Stylora.Application.Services;
 
-public class WardrobeService
+public class WardrobeService : IWardrobeService
 {
     private readonly IWardrobeRepository _wardrobeRepository;
-    private readonly IUserRepository _userRepository;
 
-    public WardrobeService(IWardrobeRepository wardrobeRepository, IUserRepository userRepository)
+    public WardrobeService(IWardrobeRepository wardrobeRepository)
     {
         _wardrobeRepository = wardrobeRepository;
-        _userRepository = userRepository;
     }
 
     public async Task<IEnumerable<WardrobeItemDto>> GetAllItemsAsync(string userId)
@@ -46,42 +44,6 @@ public class WardrobeService
     public async Task IncrementWornCountAsync(string userId, string itemId)
     {
         await _wardrobeRepository.IncrementWornCountAsync(userId, itemId);
-    }
-
-    public async Task<UserProfileDto> GetUserProfileAsync(string userId)
-    {
-        if (!Guid.TryParse(userId, out var userGuid))
-            return new UserProfileDto();
-
-        var user = await _userRepository.GetByIdWithAnalysisAsync(userGuid);
-        return user == null ? new UserProfileDto() : MapToProfileDto(user);
-    }
-
-    public async Task<UserProfileDto> UpdateUserProfileAsync(string userId, UpdateProfileRequest request)
-    {
-        if (!Guid.TryParse(userId, out var userGuid))
-            return new UserProfileDto();
-
-        StylePreference? style = Enum.TryParse<StylePreference>(request.Style, true, out var parsed) ? parsed : null;
-        var user = await _userRepository.UpdateProfileAsync(userGuid, request.FirstName, request.LastName, request.ProfilePicture, style);
-        return MapToProfileDto(user);
-    }
-
-    internal static UserProfileDto MapToProfileDto(User user)
-    {
-        var analysis = user.ColorAnalysisResult;
-        return new UserProfileDto
-        {
-            FirstName = user.FirstName,
-            LastName = user.LastName,
-            ProfilePicture = user.ProfilePicture,
-            Style = user.Style?.ToString().ToLowerInvariant(),
-            SubSeason = analysis?.SubSeason,
-            Palette = analysis?.RecommendedColors
-                ?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name ?? "")
-                .Where(n => !string.IsNullOrEmpty(n))
-                .ToList() ?? []
-        };
     }
 
     private static WardrobeItemDto MapToDto(WardrobeItem item)
