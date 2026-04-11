@@ -60,6 +60,8 @@ public class AuthController : ControllerBase
                     Email = user.Email,
                     FirstName = user.FirstName,
                     LastName = user.LastName,
+                    ProfilePicture = user.ProfilePicture,
+                    Style = user.Style?.ToString().ToLowerInvariant(),
                     CreatedAt = user.CreatedAt
                 }
             });
@@ -110,9 +112,8 @@ public class AuthController : ControllerBase
                 Email = user.Email,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                DisplayName = user.Profile?.DisplayName,
-                Season = user.Profile?.Season,
-                SubSeason = user.Profile?.SubSeason,
+                ProfilePicture = user.ProfilePicture,
+                Style = user.Style?.ToString().ToLowerInvariant(),
                 CreatedAt = user.CreatedAt
             }
         });
@@ -166,9 +167,8 @@ public class AuthController : ControllerBase
                 Email = user.Email,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                DisplayName = user.Profile?.DisplayName,
-                Season = user.Profile?.Season,
-                SubSeason = user.Profile?.SubSeason,
+                ProfilePicture = user.ProfilePicture,
+                Style = user.Style?.ToString().ToLowerInvariant(),
                 CreatedAt = user.CreatedAt
             }
         });
@@ -241,3 +241,4 @@ public class AuthController : ControllerBase
             authProperties);
     }
 }
+

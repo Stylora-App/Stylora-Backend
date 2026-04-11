@@ -45,7 +45,7 @@ public class WardrobeController : BaseApiController
     [HttpPost("items/{id}/wear")]
     public async Task<IActionResult> LogWear(string id)
     {
-        await _wardrobeService.LogWearAsync(GetUserId(), id);
+        await _wardrobeService.IncrementWornCountAsync(GetUserId(), id);
         return Ok();
     }
 
@@ -57,9 +57,9 @@ public class WardrobeController : BaseApiController
     }
 
     [HttpPut("profile")]
-    public async Task<ActionResult<UserProfileDto>> UpdateProfile([FromBody] UserProfileDto profile)
+    public async Task<ActionResult<UserProfileDto>> UpdateProfile([FromBody] UpdateProfileRequest request)
     {
-        var updated = await _wardrobeService.UpdateUserProfileAsync(GetUserId(), profile);
+        var updated = await _wardrobeService.UpdateUserProfileAsync(GetUserId(), request);
         return Ok(updated);
     }
 }

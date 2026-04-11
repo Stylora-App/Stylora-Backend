@@ -14,14 +14,12 @@ public class WardrobeRepository : IWardrobeRepository
         _context = context;
     }
 
-    public async Task<IEnumerable<WardrobeItem>> GetAllItemsAsync(string oderId)
+    public async Task<IEnumerable<WardrobeItem>> GetAllItemsAsync(string userId)
     {
-        if (!Guid.TryParse(oderId, out var userGuid))
+        if (!Guid.TryParse(userId, out var userGuid))
             return [];
 
         return await _context.WardrobeItems
-            .Include(w => w.WardrobeItemTags)
-                .ThenInclude(wt => wt.Tag)
             .Include(w => w.Color)
             .Where(w => w.UserId == userGuid)
             .OrderByDescending(w => w.CreatedAt)
@@ -34,8 +32,6 @@ public class WardrobeRepository : IWardrobeRepository
             return null;
 
         return await _context.WardrobeItems
-            .Include(w => w.WardrobeItemTags)
-                .ThenInclude(wt => wt.Tag)
             .Include(w => w.Color)
             .FirstOrDefaultAsync(w => w.UserId == userGuid && w.Id == itemGuid);
     }
@@ -83,8 +79,7 @@ public class WardrobeRepository : IWardrobeRepository
 
         existingItem.ImagePath = item.ImagePath;
         existingItem.Category = item.Category;
-        existingItem.Description = item.Description;
-        existingItem.Brand = item.Brand;
+        existingItem.Style = item.Style;
         existingItem.ColorId = item.ColorId;
         existingItem.UpdatedAt = DateTime.UtcNow;
 
@@ -92,136 +87,7 @@ public class WardrobeRepository : IWardrobeRepository
         return existingItem;
     }
 
-    public async Task<UserProfile> GetUserProfileAsync(string userId)
-    {
-        if (!Guid.TryParse(userId, out var userGuid))
-            return new UserProfile();
-
-        var profile = await _context.UserProfiles
-            .Include(p => p.PaletteColors)
-                .ThenInclude(pc => pc.Color)
-            .FirstOrDefaultAsync(p => p.UserId == userGuid);
-
-        if (profile == null)
-        {
-            // First, ensure the user exists
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userGuid);
-            if (user == null)
-            {
-                // Create an anonymous user
-                user = new User
-                {
-                    Id = userGuid,
-                    Email = $"anonymous-{userGuid}@stylora.local",
-                    PasswordHash = "anonymous",
-                    CreatedAt = DateTime.UtcNow
-                };
-                _context.Users.Add(user);
-                await _context.SaveChangesAsync();
-            }
-
-            profile = new UserProfile
-            {
-                Id = Guid.NewGuid(),
-                UserId = userGuid,
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.UserProfiles.Add(profile);
-            await _context.SaveChangesAsync();
-        }
-
-        return profile;
-    }
-
-    public async Task<UserProfile> UpdateUserProfileAsync(string userId, UserProfile profile, List<string>? paletteHexCodes = null)
-    {
-        if (!Guid.TryParse(userId, out var userGuid))
-            throw new ArgumentException("Invalid user ID", nameof(userId));
-
-        // Ensure user exists
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userGuid);
-        if (user == null)
-        {
-            user = new User
-            {
-                Id = userGuid,
-                Email = $"anonymous-{userGuid}@stylora.local",
-                PasswordHash = "anonymous",
-                CreatedAt = DateTime.UtcNow
-            };
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-        }
-
-        var existingProfile = await _context.UserProfiles
-            .Include(p => p.PaletteColors)
-            .FirstOrDefaultAsync(p => p.UserId == userGuid);
-
-        if (existingProfile == null)
-        {
-            profile.Id = Guid.NewGuid();
-            profile.UserId = userGuid;
-            profile.CreatedAt = DateTime.UtcNow;
-            _context.UserProfiles.Add(profile);
-            existingProfile = profile;
-        }
-        else
-        {
-            existingProfile.DisplayName = profile.DisplayName;
-            existingProfile.Season = profile.Season;
-            existingProfile.SubSeason = profile.SubSeason;
-            existingProfile.AvatarPath = profile.AvatarPath;
-            existingProfile.PreferredStyle = profile.PreferredStyle;
-            existingProfile.UpdatedAt = DateTime.UtcNow;
-        }
-
-        // Handle palette colors if provided
-        if (paletteHexCodes != null)
-        {
-            // Remove existing palette colors
-            if (existingProfile.PaletteColors?.Any() == true)
-            {
-                _context.UserPaletteColors.RemoveRange(existingProfile.PaletteColors);
-            }
-
-            // Add new palette colors
-            for (int i = 0; i < paletteHexCodes.Count; i++)
-            {
-                var hexCode = paletteHexCodes[i];
-                
-                // Find or create the color
-                var color = await _context.Colors.FirstOrDefaultAsync(c => c.HexCode == hexCode);
-                if (color == null)
-                {
-                    color = new Color
-                    {
-                        Id = Guid.NewGuid(),
-                        Name = hexCode, // Use hex code as name
-                        HexCode = hexCode
-                    };
-                    _context.Colors.Add(color);
-                }
-
-                var paletteColor = new UserPaletteColor
-                {
-                    UserProfileId = existingProfile.Id,
-                    ColorId = color.Id,
-                    DisplayOrder = i
-                };
-                _context.UserPaletteColors.Add(paletteColor);
-            }
-        }
-
-        await _context.SaveChangesAsync();
-        
-        // Reload with colors
-        return await _context.UserProfiles
-            .Include(p => p.PaletteColors)
-                .ThenInclude(pc => pc.Color)
-            .FirstAsync(p => p.Id == existingProfile.Id);
-    }
-
-    public async Task LogWearAsync(string userId, string itemId)
+    public async Task IncrementWornCountAsync(string userId, string itemId)
     {
         if (!Guid.TryParse(userId, out var userGuid) || !Guid.TryParse(itemId, out var itemGuid))
             return;
@@ -231,13 +97,8 @@ public class WardrobeRepository : IWardrobeRepository
 
         if (item != null)
         {
-            var wearLog = new WearLog
-            {
-                Id = Guid.NewGuid(),
-                WardrobeItemId = item.Id,
-                WornAt = DateTime.UtcNow
-            };
-            _context.WearLogs.Add(wearLog);
+            item.WornCount++;
+            item.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
     }

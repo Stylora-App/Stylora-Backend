@@ -200,72 +200,6 @@ The garment should fit naturally on the person's body.";
         }
     }
 
-    public async Task<OutfitSuggestion> SuggestOutfitAsync(IEnumerable<WardrobeItem> wardrobeItems, string occasion, string weather, List<string>? userColors = null)
-    {
-        var items = wardrobeItems.Select(i => new 
-        { 
-            id = i.Id, 
-            type = i.Category.ToString().ToLower(), 
-            description = i.Description,
-            tags = i.WardrobeItemTags?.Select(wt => wt.Tag?.Name ?? "").Where(t => !string.IsNullOrEmpty(t)).ToList() ?? new List<string>(),
-            color = i.Color?.Name
-        });
-        
-        var itemsJson = JsonSerializer.Serialize(items);
-        var userColorsText = userColors != null && userColors.Any() 
-            ? $"\nThe user's personal color palette (from their season analysis): {string.Join(", ", userColors)}. Prioritize outfits that complement these colors."
-            : "";
-
-        var prompt = $@"Given these wardrobe items: {itemsJson}.
-        Each item includes: id, type (category), description (AI-generated description of the garment), tags (user-provided labels like 'casual', 'formal'), and color (if known).
-        {userColorsText}
-        Suggest one complete outfit for a {occasion} occasion where the weather is {weather}.
-        Select specific Item IDs from the list. The outfit should work harmoniously with the user's color palette if provided.
-        Consider the item descriptions and tags to understand what each garment looks like - do NOT assume or guess.
-        Explain why this outfit works well together and provide a style tip.
-        Return JSON with the following structure:
-        {{
-            ""topId"": ""string"",
-            ""bottomId"": ""string"",
-            ""shoeId"": ""string"",
-            ""reasoning"": ""string"",
-            ""styleTip"": ""string""
-        }}";
-
-        var text = await GenerateContentAsync(prompt);
-        text = CleanJsonResponse(text);
-
-        var rawResult = JsonSerializer.Deserialize<OutfitSuggestionRaw>(text, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
-
-        // Convert raw response to domain entity with OutfitItems
-        var suggestion = new OutfitSuggestion
-        {
-            Reasoning = rawResult?.Reasoning ?? "",
-            StyleTip = rawResult?.StyleTip ?? "",
-            Occasion = occasion,
-            OutfitItems = []
-        };
-
-        // Add outfit items based on the raw response
-        if (!string.IsNullOrEmpty(rawResult?.TopId) && Guid.TryParse(rawResult.TopId, out var topGuid))
-        {
-            suggestion.OutfitItems.Add(new OutfitItem { WardrobeItemId = topGuid, ItemRole = "Top", DisplayOrder = 1 });
-        }
-        if (!string.IsNullOrEmpty(rawResult?.BottomId) && Guid.TryParse(rawResult.BottomId, out var bottomGuid))
-        {
-            suggestion.OutfitItems.Add(new OutfitItem { WardrobeItemId = bottomGuid, ItemRole = "Bottom", DisplayOrder = 2 });
-        }
-        if (!string.IsNullOrEmpty(rawResult?.ShoeId) && Guid.TryParse(rawResult.ShoeId, out var shoeGuid))
-        {
-            suggestion.OutfitItems.Add(new OutfitItem { WardrobeItemId = shoeGuid, ItemRole = "Shoes", DisplayOrder = 3 });
-        }
-
-        return suggestion;
-    }
-
     private static string CleanJsonResponse(string text)
     {
         // Remove markdown code blocks if present
@@ -369,13 +303,4 @@ internal class SeasonAnalysisRaw
     public string? Description { get; set; }
     public List<string>? RecommendedColors { get; set; }
     public string? BestMetals { get; set; }
-}
-
-internal class OutfitSuggestionRaw
-{
-    public string? TopId { get; set; }
-    public string? BottomId { get; set; }
-    public string? ShoeId { get; set; }
-    public string? Reasoning { get; set; }
-    public string? StyleTip { get; set; }
 }

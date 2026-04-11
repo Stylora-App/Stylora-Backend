@@ -12,5 +12,4 @@ public class Color
     // Navigation properties
     public ICollection<WardrobeItem> WardrobeItems { get; set; } = [];
     public ICollection<RecommendedColor> RecommendedColors { get; set; } = [];
-    public ICollection<UserPaletteColor> UserPaletteColors { get; set; } = [];
 }

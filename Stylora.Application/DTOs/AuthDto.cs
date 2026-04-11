@@ -34,8 +34,7 @@ public class UserDto
     public string Email { get; set; } = string.Empty;
     public string? FirstName { get; set; }
     public string? LastName { get; set; }
-    public string? DisplayName { get; set; }
-    public string? Season { get; set; }
-    public string? SubSeason { get; set; }
+    public string? ProfilePicture { get; set; }
+    public string? Style { get; set; }
     public DateTime CreatedAt { get; set; }
 }

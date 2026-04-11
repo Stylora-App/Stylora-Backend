@@ -31,20 +31,6 @@ public class AnalysisController : BaseApiController
         }
     }
 
-    [HttpGet("history")]
-    public async Task<ActionResult<IEnumerable<SeasonAnalysisResponse>>> GetAnalysisHistory()
-    {
-        try
-        {
-            var results = await _analysisService.GetAnalysisHistoryAsync(GetUserId());
-            return Ok(results);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
     [HttpGet("latest")]
     public async Task<ActionResult<SeasonAnalysisResponse?>> GetLatestAnalysis()
     {
