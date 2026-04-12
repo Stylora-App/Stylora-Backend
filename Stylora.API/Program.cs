@@ -83,11 +83,16 @@ var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ??
                    throw new InvalidOperationException(
                        "Gemini API key not found. Set the GEMINI_API_KEY environment variable or add it to .env file.");
 
+var rapidApiKey = Environment.GetEnvironmentVariable("RAPIDAPI_KEY") ?? 
+                  builder.Configuration["RapidApiKey"] ?? 
+                  throw new InvalidOperationException(
+                      "RapidAPI key not found. Set the RAPIDAPI_KEY environment variable or add it to .env file.");
+
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
                        throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
 builder.Services.AddApplicationServices();
-builder.Services.AddInfrastructureServices(geminiApiKey, connectionString);
+builder.Services.AddInfrastructureServices(geminiApiKey, connectionString, rapidApiKey);
 
 var app = builder.Build();
 

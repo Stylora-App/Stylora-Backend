@@ -12,7 +12,8 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructureServices(
         this IServiceCollection services, 
         string geminiApiKey,
-        string connectionString)
+        string connectionString,
+        string rapidApiKey)
     {
         // Configure PostgreSQL with EF Core
         services.AddDbContext<StyloraDbContext>(options =>
@@ -24,6 +25,9 @@ public static class DependencyInjection
 
         // Register Gemini AI service
         services.AddSingleton<IGeminiService>(sp => new GeminiService(geminiApiKey));
+        
+        // Register ASOS shopping service
+        services.AddSingleton<IAsosService>(sp => new AsosService(rapidApiKey));
         
         // Register repositories
         services.AddScoped<IUserRepository, UserRepository>();
