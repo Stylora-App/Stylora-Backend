@@ -60,10 +60,18 @@ public class AsosService : IAsosService
         Name     = p.Name ?? string.Empty,
         BrandName = p.BrandName ?? "ASOS",
         Price    = p.Price?.Current?.Text ?? string.Empty,
-        ImageUrl = string.IsNullOrWhiteSpace(p.ImageUrl) ? string.Empty : $"https:{p.ImageUrl}",
+        ImageUrl = BuildImageUrl(p.ImageUrl),
         Url      = string.IsNullOrWhiteSpace(p.Url) ? "https://www.asos.com" : $"https://www.asos.com/{p.Url}",
         Colour   = p.Colour,
     };
+
+    private static string BuildImageUrl(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        if (raw.StartsWith("https://") || raw.StartsWith("http://")) return raw;
+        if (raw.StartsWith("//")) return $"https:{raw}";
+        return $"https://{raw}";
+    }
 }
 
 // ── Raw API response models ──────────────────────────────────────────────────
