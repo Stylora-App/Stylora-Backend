@@ -10,7 +10,7 @@ public static class FilterData
     [
         "lingerie", "bikini", "swimsuit", "swimwear", "swim",
         "bralette", "panties", "knickers", "thong", "g-string",
-        "suspender", "nightwear", "pyjama", "pajama",
+        "suspender", "nightwear", "pyjama", "pajama", "bra", "set"
     ];
 
     /// <summary>Extra exclusions when the user selected <c>men</c>.</summary>
