@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Stylora.Application.Exceptions;
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
 
@@ -25,9 +26,13 @@ public class AnalysisController : BaseApiController
             var result = await _analysisService.AnalyzeSeasonAsync(GetUserId(), request);
             return Ok(result);
         }
-        catch (Exception ex)
+        catch (ExternalServiceException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return StatusCode((int)ex.StatusCode, new { error = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Failed to analyze season. Please try again." });
         }
     }
 

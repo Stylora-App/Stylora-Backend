@@ -1,4 +1,6 @@
+using System.Net;
 using Stylora.Application.Interfaces;
+using Stylora.Application.Exceptions;
 using Stylora.Domain.Entities;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -11,6 +13,7 @@ public class GeminiService : IGeminiService
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
     private const string BaseUrl = "https://generativelanguage.googleapis.com/v1beta";
+    private const int MaxTransientRetryAttempts = 3;
 
     public GeminiService(string apiKey)
     {
@@ -18,7 +21,7 @@ public class GeminiService : IGeminiService
         _httpClient = new HttpClient();
     }
 
-    private async Task<string> GenerateContentAsync(string prompt, string? imageBase64 = null, string model = "gemini-2.0-flash")
+    private async Task<string> GenerateContentAsync(string prompt, string? imageBase64 = null, string model = "gemini-2.5-flash")
     {
         var url = $"{BaseUrl}/models/{model}:generateContent?key={_apiKey}";
 
@@ -47,14 +50,7 @@ public class GeminiService : IGeminiService
             }
         };
 
-        var response = await _httpClient.PostAsJsonAsync(url, request);
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorBody = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException(
-                $"Gemini API error ({response.StatusCode}): {errorBody}. " +
-                "Verify your GEMINI_API_KEY is valid and the Generative Language API is enabled.");
-        }
+        var response = await PostGeminiRequestWithRetryAsync(url, request);
 
         var result = await response.Content.ReadFromJsonAsync<GeminiResponse>();
         return result?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text ?? "";
@@ -163,15 +159,7 @@ The garment should fit naturally on the person's body.";
 
         try
         {
-            var response = await _httpClient.PostAsJsonAsync(url, request);
-            
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                throw new InvalidOperationException(
-                    $"Gemini API error ({response.StatusCode}): {errorContent}. " +
-                    "Verify your GEMINI_API_KEY is valid and the Generative Language API is enabled.");
-            }
+            var response = await PostGeminiRequestWithRetryAsync(url, request);
 
             var result = await response.Content.ReadFromJsonAsync<GeminiImageResponse>();
             var parts = result?.Candidates?.FirstOrDefault()?.Content?.Parts;
@@ -198,6 +186,73 @@ The garment should fit naturally on the person's body.";
         {
             throw new InvalidOperationException($"Unexpected error during try-on generation: {ex.Message}", ex);
         }
+    }
+
+    private async Task<HttpResponseMessage> PostGeminiRequestWithRetryAsync(string url, object request)
+    {
+        for (var attempt = 1; attempt <= MaxTransientRetryAttempts; attempt++)
+        {
+            var response = await _httpClient.PostAsJsonAsync(url, request);
+            if (response.IsSuccessStatusCode)
+            {
+                return response;
+            }
+
+            if (IsTransientQuotaError(response.StatusCode) && attempt < MaxTransientRetryAttempts)
+            {
+                var delay = GetRetryDelay(response, attempt);
+                await Task.Delay(delay);
+                continue;
+            }
+
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw CreateGeminiException(response.StatusCode, errorBody);
+        }
+
+        throw new ExternalServiceException(
+            "Gemini",
+            HttpStatusCode.ServiceUnavailable,
+            "Gemini service is temporarily unavailable. Please try again shortly.");
+    }
+
+    private static bool IsTransientQuotaError(HttpStatusCode statusCode)
+    {
+        return statusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable;
+    }
+
+    private static TimeSpan GetRetryDelay(HttpResponseMessage response, int attempt)
+    {
+        if (response.Headers.RetryAfter?.Delta is TimeSpan retryAfterDelta && retryAfterDelta > TimeSpan.Zero)
+        {
+            return retryAfterDelta;
+        }
+
+        if (response.Headers.RetryAfter?.Date is DateTimeOffset retryAfterDate)
+        {
+            var untilRetry = retryAfterDate - DateTimeOffset.UtcNow;
+            if (untilRetry > TimeSpan.Zero)
+            {
+                return untilRetry;
+            }
+        }
+
+        return TimeSpan.FromSeconds(Math.Pow(2, attempt));
+    }
+
+    private static ExternalServiceException CreateGeminiException(HttpStatusCode statusCode, string errorBody)
+    {
+        var message = statusCode switch
+        {
+            HttpStatusCode.TooManyRequests => "Gemini rate limit reached. Please wait about a minute and try again.",
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "Gemini authentication failed. Verify GEMINI_API_KEY permissions for this project.",
+            _ => "Gemini request failed. Please try again later."
+        };
+
+        var details = string.IsNullOrWhiteSpace(errorBody)
+            ? message
+            : $"{message} Upstream response: {errorBody}";
+
+        return new ExternalServiceException("Gemini", statusCode, details);
     }
 
     private static string CleanJsonResponse(string text)
