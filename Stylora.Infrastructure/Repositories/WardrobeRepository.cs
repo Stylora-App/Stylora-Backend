@@ -81,6 +81,10 @@ public class WardrobeRepository : IWardrobeRepository
         existingItem.Category = item.Category;
         existingItem.Style = item.Style;
         existingItem.ColorId = item.ColorId;
+        existingItem.ValidationStatus = item.ValidationStatus;
+        existingItem.ValidationConfidence = item.ValidationConfidence;
+        existingItem.ValidationMessage = item.ValidationMessage;
+        existingItem.ValidatedAt = item.ValidatedAt;
         existingItem.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();

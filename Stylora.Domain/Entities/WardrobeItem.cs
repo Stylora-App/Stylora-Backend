@@ -16,6 +16,10 @@ public class WardrobeItem : BaseEntity
     public Color? Color { get; set; }
 
     public int WornCount { get; set; } = 0;
+    public ClothingValidationStatus? ValidationStatus { get; set; }
+    public double? ValidationConfidence { get; set; }
+    public string? ValidationMessage { get; set; }
+    public DateTime? ValidatedAt { get; set; }
 
     public ICollection<TryOnSession> TryOnSessions { get; set; } = [];
 }

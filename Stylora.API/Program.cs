@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Stylora.Application;
 using Stylora.Infrastructure;
 using Stylora.Infrastructure.Data;
@@ -25,6 +26,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
+builder.Services.AddMemoryCache();
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
@@ -91,8 +93,14 @@ var rapidApiKey = Environment.GetEnvironmentVariable("RAPIDAPI_KEY") ??
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
                        throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
+var clothingValidationSettings = new Stylora.Application.Models.ClothingValidationSettings();
+builder.Configuration.GetSection("ClothingValidation").Bind(clothingValidationSettings);
+clothingValidationSettings.PythonExecutablePath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, clothingValidationSettings.PythonExecutablePath));
+clothingValidationSettings.WorkerScriptPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, clothingValidationSettings.WorkerScriptPath));
+clothingValidationSettings.SeedDirectoryPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, clothingValidationSettings.SeedDirectoryPath));
+
 builder.Services.AddApplicationServices();
-builder.Services.AddInfrastructureServices(geminiApiKey, connectionString, rapidApiKey);
+builder.Services.AddInfrastructureServices(geminiApiKey, connectionString, rapidApiKey, clothingValidationSettings);
 
 var app = builder.Build();
 
@@ -102,6 +110,12 @@ using (var scope = app.Services.CreateScope())
     try
     {
         await dbContext.Database.MigrateAsync();
+    }
+    catch (PostgresException ex) when (ex.MessageText.Contains("extension \"vector\" is not available", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            "PostgreSQL pgvector is required for clothing validation. Install the pgvector extension on the database server and restart the API.",
+            ex);
     }
     catch (Exception ex)
     {

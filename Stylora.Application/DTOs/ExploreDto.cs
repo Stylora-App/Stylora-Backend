@@ -27,6 +27,7 @@ public class ExploreQueryDto
     /// <summary>e.g. "women" | "men"</summary>
     public string? Gender { get; set; }
     public string? Season { get; set; }
+    public string? SubSeason { get; set; }
     public List<string>? Palette { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;

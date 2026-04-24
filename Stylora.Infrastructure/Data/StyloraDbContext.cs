@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Pgvector;
 using Stylora.Domain.Entities;
 using Stylora.Domain.Enums;
 
@@ -12,6 +15,7 @@ public class StyloraDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<WardrobeItem> WardrobeItems => Set<WardrobeItem>();
+    public DbSet<ClothingReferenceEmbedding> ClothingReferenceEmbeddings => Set<ClothingReferenceEmbedding>();
     public DbSet<SeasonAnalysisResult> SeasonAnalysisResults => Set<SeasonAnalysisResult>();
     public DbSet<TryOnSession> TryOnSessions => Set<TryOnSession>();
     public DbSet<Color> Colors => Set<Color>();
@@ -20,6 +24,16 @@ public class StyloraDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.HasPostgresExtension("vector");
+
+        var vectorConverter = new ValueConverter<float[], Vector>(
+            value => new Vector(value),
+            value => value.ToArray());
+
+        var vectorComparer = new ValueComparer<float[]>(
+            (left, right) => left != null && right != null && left.SequenceEqual(right),
+            value => value.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode())),
+            value => value.ToArray());
 
         modelBuilder.Entity<User>(entity =>
         {
@@ -61,6 +75,8 @@ public class StyloraDbContext : DbContext
             entity.Property(e => e.Category).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.Style).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.WornCount).HasDefaultValue(0);
+            entity.Property(e => e.ValidationStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.ValidationMessage).HasMaxLength(500);
 
             entity.HasOne(e => e.User)
                   .WithMany(u => u.WardrobeItems)
@@ -74,6 +90,25 @@ public class StyloraDbContext : DbContext
 
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.Category);
+        });
+
+        modelBuilder.Entity<ClothingReferenceEmbedding>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Label).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.SourceKey).HasMaxLength(260).IsRequired();
+            entity.Property(e => e.CategoryHint).HasMaxLength(100);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.Embedding)
+                .HasConversion(vectorConverter)
+                .Metadata.SetValueComparer(vectorComparer);
+            entity.Property(e => e.Embedding).HasColumnType("vector(512)");
+
+            entity.HasIndex(e => e.SourceKey).IsUnique();
+            entity.HasIndex(e => e.Label);
+            entity.HasIndex(e => e.Embedding)
+                .HasMethod("hnsw")
+                .HasOperators("vector_cosine_ops");
         });
 
         modelBuilder.Entity<Color>(entity =>

@@ -25,10 +25,22 @@ public class WardrobeController : BaseApiController
     }
 
     [HttpPost("items")]
-    public async Task<ActionResult<WardrobeItemDto>> AddItem([FromBody] CreateWardrobeItemRequest request)
+    public async Task<ActionResult<CreateWardrobeItemResponse>> AddItem([FromBody] CreateWardrobeItemRequest request)
     {
-        var item = await _wardrobeService.AddItemAsync(GetUserId(), request);
-        return CreatedAtAction(nameof(GetItems), new { id = item.Id }, item);
+        try
+        {
+            var result = await _wardrobeService.AddItemAsync(GetUserId(), request);
+            if (result.Item is null && result.Validation is not null)
+            {
+                return Conflict(result.Validation);
+            }
+
+            return CreatedAtAction(nameof(GetItems), new { id = result.Item?.Id }, result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpDelete("items/{id}")]

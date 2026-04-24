@@ -1,6 +1,9 @@
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
+using Stylora.Application.Models;
 using Stylora.Application.Services;
+using Stylora.Domain.Entities;
+using Stylora.Domain.Enums;
 using Xunit;
 
 namespace Stylora.Application.Tests.Services;
@@ -188,6 +191,88 @@ public class ExploreServiceTests
 
         Assert.Equal([1, 2, 3, 4, 5], result.Products.Select(p => p.Id));
         Assert.Equal(["women fashion outfit"], asosService.Queries);
+    }
+
+    [Fact]
+    public async Task SearchAsync_UsesCanonicalSeasonVector_WhenSubSeasonIsProvided()
+    {
+        var asosService = new FakeAsosService(new Dictionary<int, List<ShoppingProductDto>>
+        {
+            [0] =
+            [
+                new() { Id = 1, Name = "Forest Jacket", Colour = "olive" },
+                new() { Id = 2, Name = "Blue Jacket", Colour = "cobalt blue" },
+                new() { Id = 3, Name = "Rust Knit", Colour = "rust" },
+            ],
+        });
+        var service = new ExploreService(asosService);
+
+        var result = await service.SearchAsync(new ExploreQueryDto
+        {
+            Page = 1,
+            PageSize = 20,
+            Season = "Autumn",
+            SubSeason = "Deep Autumn",
+        });
+
+        Assert.Equal([1, 3], result.Products.Select(p => p.Id));
+        Assert.All(result.Products, product => Assert.True(product.PaletteMatch));
+    }
+
+    [Fact]
+    public async Task SearchAsync_ReusesCachedFilteredPool_ForLaterPages()
+    {
+        var firstBatch = CreateProducts(1, 30)
+            .Concat(CreateExcludedProducts(31, 18))
+            .ToList();
+        var secondBatch = CreateProducts(49, 20)
+            .Concat(CreateExcludedProducts(69, 28))
+            .ToList();
+
+        var asosService = new FakeAsosService(new Dictionary<int, List<ShoppingProductDto>>
+        {
+            [0] = firstBatch,
+            [48] = secondBatch,
+        });
+        var service = new ExploreService(asosService);
+
+        var pageOne = await service.SearchAsync(new ExploreQueryDto
+        {
+            Page = 1,
+            PageSize = 20,
+        });
+        var pageTwo = await service.SearchAsync(new ExploreQueryDto
+        {
+            Page = 2,
+            PageSize = 20,
+        });
+
+        Assert.Equal(20, pageOne.Products.Count);
+        Assert.Equal(20, pageTwo.Products.Count);
+        Assert.Equal([0, 48], asosService.Offsets);
+    }
+
+    [Fact]
+    public async Task SearchAsync_MatchesSynonymSearchTerms_AcrossProductMetadata()
+    {
+        var asosService = new FakeAsosService(new Dictionary<int, List<ShoppingProductDto>>
+        {
+            [0] =
+            [
+                new() { Id = 1, Name = "Leather Trainers", BrandName = "ASOS", Colour = "white" },
+                new() { Id = 2, Name = "Leather Loafers", BrandName = "ASOS", Colour = "white" },
+            ],
+        });
+        var service = new ExploreService(asosService);
+
+        var result = await service.SearchAsync(new ExploreQueryDto
+        {
+            Page = 1,
+            PageSize = 20,
+            Q = "sneakers",
+        });
+
+        Assert.Equal([1], result.Products.Select(p => p.Id));
     }
 
     private static List<ShoppingProductDto> CreateProducts(int startId, int count, string colour = "black")

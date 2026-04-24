@@ -23,6 +23,7 @@ public class ExploreController : BaseApiController
     /// <param name="q">Free-text search query (optional; falls back to season-based terms).</param>
     /// <param name="category">Category slug: all | tops | bottoms | dresses | shoes | accessories | outerwear</param>
     /// <param name="season">User's season (e.g. "True Autumn") used to build the default query.</param>
+    /// <param name="subSeason">User's sub-season (e.g. "Deep Autumn") used to resolve the canonical palette vector.</param>
     /// <param name="palette">Comma-separated hex colour codes from the user's palette (e.g. "#FF5733,#C19A6B").</param>
     /// <param name="page">1-based page number (default 1).</param>
     /// <param name="pageSize">Items per page, 1–48 (default 20).</param>
@@ -32,6 +33,7 @@ public class ExploreController : BaseApiController
         [FromQuery] string?  category = "all",
         [FromQuery] string?  gender   = null,
         [FromQuery] string?  season   = null,
+        [FromQuery] string?  subSeason = null,
         [FromQuery] string?  palette  = null,
         [FromQuery] int      page     = 1,
         [FromQuery] int      pageSize = 20)
@@ -47,6 +49,7 @@ public class ExploreController : BaseApiController
             Category = category,
             Gender   = gender,
             Season   = season,
+            SubSeason = subSeason,
             Palette  = paletteList,
             Page     = Math.Max(1, page),
             PageSize = Math.Clamp(pageSize, 1, 48),

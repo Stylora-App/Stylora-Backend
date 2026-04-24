@@ -1,5 +1,6 @@
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
+using Stylora.Application.Models;
 using Stylora.Domain.Entities;
 using Stylora.Domain.Enums;
 
@@ -51,6 +52,15 @@ public class UserService : IUserService
     public static UserProfileDto BuildProfileDto(User user)
     {
         var analysis = user.ColorAnalysisResult;
+        var palette = SeasonData.GetPalette(analysis?.Season, analysis?.SubSeason);
+        if (palette.Count == 0)
+        {
+            palette = analysis?.RecommendedColors
+                ?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name ?? "")
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToList() ?? [];
+        }
+
         return new UserProfileDto
         {
             FirstName = user.FirstName,
@@ -59,10 +69,7 @@ public class UserService : IUserService
             Style = user.Style?.ToString().ToLowerInvariant(),
             Season = analysis?.Season,
             SubSeason = analysis?.SubSeason,
-            Palette = analysis?.RecommendedColors
-                ?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name ?? "")
-                .Where(n => !string.IsNullOrEmpty(n))
-                .ToList() ?? []
+            Palette = palette
         };
     }
 }

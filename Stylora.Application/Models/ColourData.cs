@@ -90,19 +90,19 @@ public static class ColourData
     public static readonly Dictionary<string, string[]> ColourFamilyKeywords =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            { "red",       ["red", "scarlet", "crimson", "cherry", "wine", "claret", "ruby", "tomato"] },
-            { "pink",      ["pink", "rose", "blush", "fuchsia", "magenta", "hot pink", "dusty pink", "candy", "flamingo"] },
-            { "orange",    ["orange", "coral", "peach", "apricot", "salmon", "rust", "amber", "terracotta", "copper", "burnt orange", "papaya"] },
-            { "yellow",    ["yellow", "gold", "mustard", "lemon", "cream", "straw", "butter", "wheat", "honey"] },
-            { "green",     ["green", "mint", "olive", "sage", "khaki", "emerald", "forest", "jade", "hunter", "pistachio", "lime"] },
-            { "teal",      ["teal", "turquoise", "aqua", "cyan", "jade green"] },
-            { "blue",      ["blue", "navy", "cobalt", "royal", "sky", "denim", "indigo", "periwinkle", "powder", "ice blue", "steel blue", "cornflower"] },
-            { "purple",    ["purple", "violet", "lavender", "lilac", "mauve", "plum", "grape", "aubergine", "eggplant"] },
-            { "brown",     ["brown", "camel", "tan", "taupe", "chocolate", "coffee", "mocha", "walnut", "cocoa", "toffee", "cinnamon", "hazel"] },
-            { "nude",      ["nude", "beige", "sand", "natural", "oatmeal", "ivory", "stone", "ecru", "biscuit", "blush beige", "latte", "caramel"] },
-            { "grey",      ["grey", "gray", "silver", "charcoal", "steel", "ash", "slate", "fog", "smoke"] },
-            { "black",     ["black", "ebony", "jet", "onyx", "midnight", "ink"] },
-            { "white",     ["white", "off white", "off-white", "snow", "bright white", "optical white", "cream white"] },
+            { "red",       ["red", "scarlet", "crimson", "cherry", "wine", "claret", "ruby", "tomato", "berry", "merlot", "oxblood", "garnet", "brick"] },
+            { "pink",      ["pink", "rose", "blush", "fuchsia", "magenta", "hot pink", "dusty pink", "candy", "flamingo", "bubblegum", "petal", "watermelon", "raspberry"] },
+            { "orange",    ["orange", "coral", "peach", "apricot", "salmon", "rust", "amber", "terracotta", "copper", "burnt orange", "papaya", "tangerine", "persimmon", "melon"] },
+            { "yellow",    ["yellow", "gold", "mustard", "lemon", "cream", "straw", "butter", "wheat", "honey", "marigold", "sunflower", "saffron", "vanilla"] },
+            { "green",     ["green", "mint", "olive", "sage", "khaki", "emerald", "forest", "jade", "hunter", "pistachio", "lime", "moss", "fern", "matcha", "seafoam"] },
+            { "teal",      ["teal", "turquoise", "aqua", "cyan", "jade green", "lagoon", "peacock", "petrol", "aquamarine"] },
+            { "blue",      ["blue", "navy", "cobalt", "royal", "sky", "denim", "indigo", "periwinkle", "powder", "ice blue", "steel blue", "cornflower", "azure", "sapphire", "cerulean", "baby blue"] },
+            { "purple",    ["purple", "violet", "lavender", "lilac", "mauve", "plum", "grape", "aubergine", "eggplant", "orchid", "amethyst"] },
+            { "brown",     ["brown", "camel", "tan", "taupe", "chocolate", "coffee", "mocha", "walnut", "cocoa", "toffee", "cinnamon", "hazel", "espresso", "chestnut", "mahogany"] },
+            { "nude",      ["nude", "beige", "sand", "natural", "oatmeal", "ivory", "stone", "ecru", "biscuit", "blush beige", "latte", "caramel", "putty", "mushroom"] },
+            { "grey",      ["grey", "gray", "silver", "charcoal", "steel", "ash", "slate", "fog", "smoke", "graphite", "pewter"] },
+            { "black",     ["black", "ebony", "jet", "onyx", "midnight", "ink", "coal"] },
+            { "white",     ["white", "off white", "off-white", "snow", "bright white", "optical white", "cream white", "chalk", "porcelain"] },
         };
 
     /// <summary>

@@ -1,5 +1,6 @@
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
+using Stylora.Application.Models;
 using Stylora.Domain.Entities;
 
 namespace Stylora.Application.Services;
@@ -23,16 +24,17 @@ public class AnalysisService : IAnalysisService
     public async Task<SeasonAnalysisResponse> AnalyzeSeasonAsync(string userId, SeasonAnalysisRequest request)
     {
         var result = await _geminiService.AnalyzeSeasonAsync(request.ImageBase64);
+        var recommendedPalette = ResolveRecommendedPalette(
+            result.Season,
+            result.SubSeason,
+            result.RecommendedColors?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name).Where(static value => !string.IsNullOrWhiteSpace(value)));
 
         return new SeasonAnalysisResponse
         {
             Season = result.Season,
             SubSeason = result.SubSeason,
             Description = result.Description,
-            RecommendedColors = result.RecommendedColors
-                ?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name ?? "")
-                .Where(n => !string.IsNullOrEmpty(n))
-                .ToList() ?? [],
+            RecommendedColors = recommendedPalette,
             BestMetals = result.BestMetals
         };
     }
@@ -45,16 +47,18 @@ public class AnalysisService : IAnalysisService
         var result = await _analysisRepository.GetByUserIdAsync(userGuid);
         if (result == null) return null;
 
+        var recommendedPalette = ResolveRecommendedPalette(
+            result.Season,
+            result.SubSeason,
+            result.RecommendedColors?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name));
+
         return new SeasonAnalysisResponse
         {
             Id = result.Id.ToString(),
             Season = result.Season,
             SubSeason = result.SubSeason,
             Description = result.Description,
-            RecommendedColors = result.RecommendedColors
-                ?.Select(rc => rc.Color?.HexCode ?? rc.Color?.Name ?? "")
-                .Where(n => !string.IsNullOrEmpty(n))
-                .ToList() ?? [],
+            RecommendedColors = recommendedPalette,
             BestMetals = result.BestMetals
         };
     }
@@ -64,6 +68,11 @@ public class AnalysisService : IAnalysisService
         if (!Guid.TryParse(userId, out var userGuid))
             throw new ArgumentException("Invalid user ID", nameof(userId));
 
+        var recommendedPalette = ResolveRecommendedPalette(
+            analysis.Season,
+            analysis.SubSeason,
+            analysis.RecommendedColors);
+
         var analysisResult = new SeasonAnalysisResult
         {
             UserId = userGuid,
@@ -71,7 +80,7 @@ public class AnalysisService : IAnalysisService
             SubSeason = analysis.SubSeason,
             Description = analysis.Description,
             BestMetals = analysis.BestMetals,
-            RecommendedColors = analysis.RecommendedColors
+            RecommendedColors = recommendedPalette
                 .Select(hexCode => new RecommendedColor
                 {
                     Color = new Color { Name = hexCode, HexCode = hexCode }
@@ -84,5 +93,22 @@ public class AnalysisService : IAnalysisService
             ?? throw new InvalidOperationException("User not found.");
 
         return UserService.BuildProfileDto(user);
+    }
+
+    private static List<string> ResolveRecommendedPalette(
+        string? season,
+        string? subSeason,
+        IEnumerable<string?>? fallbackColours)
+    {
+        var canonicalPalette = SeasonData.GetPalette(season, subSeason);
+        if (canonicalPalette.Count > 0)
+        {
+            return canonicalPalette;
+        }
+
+        return fallbackColours?
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value!)
+            .ToList() ?? [];
     }
 }
