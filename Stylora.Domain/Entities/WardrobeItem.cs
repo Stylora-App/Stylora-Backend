@@ -10,6 +10,8 @@ public class WardrobeItem : BaseEntity
 
     public string ImagePath { get; set; } = string.Empty;
     public ClothingCategory Category { get; set; }
+    public string? ArticleTypeLabel { get; set; }
+    public string? AudienceTag { get; set; }
     public StylePreference? Style { get; set; }
 
     public Guid? ColorId { get; set; }

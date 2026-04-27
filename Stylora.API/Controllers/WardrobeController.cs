@@ -24,6 +24,20 @@ public class WardrobeController : BaseApiController
         return Ok(items);
     }
 
+    [HttpPost("items/analyze")]
+    public async Task<ActionResult<WardrobeValidationDto>> AnalyzeItem([FromBody] AnalyzeWardrobeItemRequest request)
+    {
+        try
+        {
+            var result = await _wardrobeService.AnalyzeItemAsync(request);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("items")]
     public async Task<ActionResult<CreateWardrobeItemResponse>> AddItem([FromBody] CreateWardrobeItemRequest request)
     {

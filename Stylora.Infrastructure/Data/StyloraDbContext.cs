@@ -73,6 +73,8 @@ public class StyloraDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.ImagePath).HasColumnType("text").IsRequired();
             entity.Property(e => e.Category).HasConversion<string>().HasMaxLength(50);
+            entity.Property(e => e.ArticleTypeLabel).HasMaxLength(100);
+            entity.Property(e => e.AudienceTag).HasMaxLength(20);
             entity.Property(e => e.Style).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.WornCount).HasDefaultValue(0);
             entity.Property(e => e.ValidationStatus).HasConversion<string>().HasMaxLength(20);
@@ -90,6 +92,7 @@ public class StyloraDbContext : DbContext
 
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.Category);
+            entity.HasIndex(e => e.ArticleTypeLabel);
         });
 
         modelBuilder.Entity<ClothingReferenceEmbedding>(entity =>
@@ -98,6 +101,17 @@ public class StyloraDbContext : DbContext
             entity.Property(e => e.Label).HasConversion<string>().HasMaxLength(20);
             entity.Property(e => e.SourceKey).HasMaxLength(260).IsRequired();
             entity.Property(e => e.CategoryHint).HasMaxLength(100);
+            entity.Property(e => e.SourceDataset).HasMaxLength(100);
+            entity.Property(e => e.GenderTag).HasMaxLength(20);
+            entity.Property(e => e.MasterCategory).HasMaxLength(50);
+            entity.Property(e => e.SubCategory).HasMaxLength(50);
+            entity.Property(e => e.ArticleType).HasMaxLength(100);
+            entity.Property(e => e.CategoryGroup).HasMaxLength(50);
+            entity.Property(e => e.BaseColour).HasMaxLength(50);
+            entity.Property(e => e.ColorFamily).HasMaxLength(50);
+            entity.Property(e => e.SeasonTag).HasMaxLength(50);
+            entity.Property(e => e.UsageTag).HasMaxLength(50);
+            entity.Property(e => e.DisplayName).HasMaxLength(250);
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.Embedding)
                 .HasConversion(vectorConverter)
@@ -106,6 +120,10 @@ public class StyloraDbContext : DbContext
 
             entity.HasIndex(e => e.SourceKey).IsUnique();
             entity.HasIndex(e => e.Label);
+            entity.HasIndex(e => e.GenderTag);
+            entity.HasIndex(e => e.CategoryGroup);
+            entity.HasIndex(e => e.ArticleType);
+            entity.HasIndex(e => e.ColorFamily);
             entity.HasIndex(e => e.Embedding)
                 .HasMethod("hnsw")
                 .HasOperators("vector_cosine_ops");

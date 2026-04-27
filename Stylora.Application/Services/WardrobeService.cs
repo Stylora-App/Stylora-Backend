@@ -25,6 +25,12 @@ public class WardrobeService : IWardrobeService
         return items.Select(MapToDto);
     }
 
+    public async Task<WardrobeValidationDto> AnalyzeItemAsync(AnalyzeWardrobeItemRequest request)
+    {
+        var validation = await _clothingValidationService.ValidateAsync(request.Image);
+        return MapValidation(validation);
+    }
+
     public async Task<CreateWardrobeItemResponse> AddItemAsync(string userId, CreateWardrobeItemRequest request)
     {
         var validation = await _clothingValidationService.ValidateAsync(request.Image);
@@ -38,14 +44,29 @@ public class WardrobeService : IWardrobeService
             };
         }
 
-        if (!Enum.TryParse<ClothingCategory>(request.Category, true, out var category))
+        var resolvedCategory = string.IsNullOrWhiteSpace(request.Category)
+            ? validation.SuggestedCategory
+            : request.Category;
+
+        if (!Enum.TryParse<ClothingCategory>(resolvedCategory, true, out var category))
             category = ClothingCategory.Top;
+
+        var resolvedStyle = string.IsNullOrWhiteSpace(request.Style)
+            ? validation.SuggestedStyle
+            : request.Style;
+
+        var resolvedColor = string.IsNullOrWhiteSpace(request.Color)
+            ? validation.SuggestedColor
+            : request.Color;
 
         var item = new WardrobeItem
         {
             ImagePath = request.Image,
             Category = category,
-            Style = Enum.TryParse<StylePreference>(request.Style, true, out var style) ? style : null,
+            ArticleTypeLabel = validation.SuggestedArticleType,
+            AudienceTag = validation.SuggestedGender,
+            Style = Enum.TryParse<StylePreference>(resolvedStyle, true, out var style) ? style : null,
+            Color = await _wardrobeRepository.ResolveColorAsync(resolvedColor),
             ValidationStatus = validation.Status,
             ValidationConfidence = validation.Confidence,
             ValidationMessage = validation.Message,
@@ -77,6 +98,8 @@ public class WardrobeService : IWardrobeService
             Id = item.Id.ToString(),
             Image = item.ImagePath,
             Category = item.Category.ToString().ToLowerInvariant(),
+            ArticleTypeLabel = item.ArticleTypeLabel,
+            AudienceTag = item.AudienceTag,
             Style = item.Style?.ToString().ToLowerInvariant(),
             Color = item.Color?.HexCode ?? item.Color?.Name,
             WornCount = item.WornCount,
@@ -96,7 +119,14 @@ public class WardrobeService : IWardrobeService
             Confidence = validation.Confidence,
             Message = validation.Message,
             CanOverride = validation.Status == ClothingValidationStatus.Warning,
-            NearestLabels = validation.NearestLabels.ToList()
+            NearestLabels = validation.NearestLabels.ToList(),
+            SuggestedCategory = validation.SuggestedCategory,
+            SuggestedArticleType = validation.SuggestedArticleType,
+            SuggestedStyle = validation.SuggestedStyle,
+            SuggestedColor = validation.SuggestedColor,
+            SuggestedColorFamily = validation.SuggestedColorFamily,
+            SuggestedUsage = validation.SuggestedUsage,
+            SuggestedGender = validation.SuggestedGender
         };
     }
 }

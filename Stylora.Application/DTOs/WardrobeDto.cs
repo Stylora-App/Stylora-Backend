@@ -5,6 +5,8 @@ public class WardrobeItemDto
     public string Id { get; set; } = string.Empty;
     public string Image { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
+    public string? ArticleTypeLabel { get; set; }
+    public string? AudienceTag { get; set; }
     public string? Style { get; set; }
     public string? Color { get; set; }
     public int WornCount { get; set; }
@@ -17,10 +19,15 @@ public class WardrobeItemDto
 public class CreateWardrobeItemRequest
 {
     public string Image { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
+    public string? Category { get; set; }
     public string? Style { get; set; }
     public string? Color { get; set; }
     public bool OverrideValidationWarning { get; set; }
+}
+
+public class AnalyzeWardrobeItemRequest
+{
+    public string Image { get; set; } = string.Empty;
 }
 
 public class WardrobeValidationDto
@@ -31,6 +38,13 @@ public class WardrobeValidationDto
     public string Message { get; set; } = string.Empty;
     public bool CanOverride { get; set; }
     public List<string> NearestLabels { get; set; } = [];
+    public string? SuggestedCategory { get; set; }
+    public string? SuggestedArticleType { get; set; }
+    public string? SuggestedStyle { get; set; }
+    public string? SuggestedColor { get; set; }
+    public string? SuggestedColorFamily { get; set; }
+    public string? SuggestedUsage { get; set; }
+    public string? SuggestedGender { get; set; }
 }
 
 public class CreateWardrobeItemResponse

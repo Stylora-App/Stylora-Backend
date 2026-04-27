@@ -6,5 +6,7 @@ public enum ClothingCategory
     Bottom,
     Dress,
     Jumpsuit,
-    Shoes
+    Shoes,
+    Outerwear,
+    Accessories
 }

@@ -36,6 +36,31 @@ public class WardrobeRepository : IWardrobeRepository
             .FirstOrDefaultAsync(w => w.UserId == userGuid && w.Id == itemGuid);
     }
 
+    public async Task<Color?> ResolveColorAsync(string? colorName)
+    {
+        if (string.IsNullOrWhiteSpace(colorName))
+        {
+            return null;
+        }
+
+        var normalizedName = colorName.Trim().ToLowerInvariant();
+        var existing = await _context.Colors.FirstOrDefaultAsync(color => color.Name == normalizedName);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var color = new Color
+        {
+            Id = Guid.NewGuid(),
+            Name = normalizedName
+        };
+
+        _context.Colors.Add(color);
+        await _context.SaveChangesAsync();
+        return color;
+    }
+
     public async Task<WardrobeItem> AddItemAsync(string userId, WardrobeItem item)
     {
         if (!Guid.TryParse(userId, out var userGuid))
@@ -79,6 +104,8 @@ public class WardrobeRepository : IWardrobeRepository
 
         existingItem.ImagePath = item.ImagePath;
         existingItem.Category = item.Category;
+        existingItem.ArticleTypeLabel = item.ArticleTypeLabel;
+        existingItem.AudienceTag = item.AudienceTag;
         existingItem.Style = item.Style;
         existingItem.ColorId = item.ColorId;
         existingItem.ValidationStatus = item.ValidationStatus;

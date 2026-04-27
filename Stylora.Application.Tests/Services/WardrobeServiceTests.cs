@@ -91,6 +91,37 @@ public class WardrobeServiceTests
         Assert.Equal("warning", response.Validation!.Status);
     }
 
+    [Fact]
+    public async Task AddItemAsync_UsesSuggestedMetadata_WhenRequestOmitsManualFields()
+    {
+        var repository = new FakeWardrobeRepository();
+        var service = new WardrobeService(
+            repository,
+            new FakeClothingValidationService(new ClothingImageValidationResult
+            {
+                Status = ClothingValidationStatus.Pass,
+                IsLikelyClothing = true,
+                Confidence = 0.97,
+                Message = "ok",
+                NearestLabels = ["clothing"],
+                SuggestedCategory = "outerwear",
+                SuggestedStyle = "casual",
+                SuggestedColor = "navy blue"
+            }));
+
+        var response = await service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
+        {
+            Image = "data:image/png;base64,aGVsbG8="
+        });
+
+        var saved = Assert.Single(repository.Items);
+        Assert.Equal(ClothingCategory.Outerwear, saved.Category);
+        Assert.Equal(StylePreference.Casual, saved.Style);
+        Assert.Equal("navy blue", saved.Color?.Name);
+        Assert.Equal("outerwear", response.Item!.Category);
+        Assert.Equal("navy blue", response.Item.Color);
+    }
+
     private sealed class FakeClothingValidationService : IClothingValidationService
     {
         private readonly ClothingImageValidationResult _result;
@@ -126,6 +157,13 @@ public class WardrobeServiceTests
 
         public Task IncrementWornCountAsync(string userId, string itemId)
             => Task.CompletedTask;
+
+        public Task<Color?> ResolveColorAsync(string? colorName)
+            => Task.FromResult<Color?>(string.IsNullOrWhiteSpace(colorName) ? null : new Color
+            {
+                Id = Guid.NewGuid(),
+                Name = colorName.Trim().ToLowerInvariant()
+            });
 
         public Task<WardrobeItem?> UpdateItemAsync(string userId, WardrobeItem item)
             => Task.FromResult<WardrobeItem?>(item);
