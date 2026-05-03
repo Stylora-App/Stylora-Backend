@@ -17,7 +17,9 @@ public static class DependencyInjection
         string geminiApiKey,
         string connectionString,
         string rapidApiKey,
-        ClothingValidationSettings clothingValidationSettings)
+        ClothingValidationSettings clothingValidationSettings,
+        OutfitChatModelSettings outfitChatModelSettings,
+        WeatherApiSettings weatherApiSettings)
     {
         // Configure PostgreSQL with EF Core
         services.AddDbContext<StyloraDbContext>(options =>
@@ -31,12 +33,18 @@ public static class DependencyInjection
         // Register Gemini AI service
         services.AddSingleton<IGeminiService>(sp => new GeminiService(geminiApiKey));
         services.AddSingleton(clothingValidationSettings);
+        services.AddSingleton(outfitChatModelSettings);
+        services.AddSingleton(weatherApiSettings);
         services.AddSingleton<ClipImageEmbeddingWorkerService>();
         services.AddSingleton<IImageEmbeddingService>(sp => sp.GetRequiredService<ClipImageEmbeddingWorkerService>());
+        services.AddSingleton<GemmaIntentWorkerService>();
+        services.AddSingleton<IOutfitIntentParser>(sp => sp.GetRequiredService<GemmaIntentWorkerService>());
+        services.AddSingleton<IWeatherService, OpenWeatherService>();
         services.AddScoped<IClothingValidationService, ClothingValidationService>();
         services.AddScoped<ClothingReferenceSeedService>();
         services.AddHostedService<ClothingValidationWorkerWarmupHostedService>();
         services.AddHostedService<ClothingReferenceSeedingHostedService>();
+        services.AddHostedService<GemmaIntentWorkerWarmupHostedService>();
         
         // Register ASOS shopping service
         services.AddSingleton<IAsosService>(sp => new AsosService(rapidApiKey));

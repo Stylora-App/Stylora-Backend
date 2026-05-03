@@ -99,8 +99,28 @@ clothingValidationSettings.PythonExecutablePath = Path.GetFullPath(Path.Combine(
 clothingValidationSettings.WorkerScriptPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, clothingValidationSettings.WorkerScriptPath));
 clothingValidationSettings.SeedDirectoryPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, clothingValidationSettings.SeedDirectoryPath));
 
+var outfitChatModelSettings = new Stylora.Application.Models.OutfitChatModelSettings();
+builder.Configuration.GetSection("OutfitChatModel").Bind(outfitChatModelSettings);
+outfitChatModelSettings.ModelId = Environment.GetEnvironmentVariable("GEMMA_MODEL_ID")
+    ?? builder.Configuration["OutfitChatModel:ModelId"]
+    ?? outfitChatModelSettings.ModelId;
+outfitChatModelSettings.PythonExecutablePath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, outfitChatModelSettings.PythonExecutablePath));
+outfitChatModelSettings.WorkerScriptPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, outfitChatModelSettings.WorkerScriptPath));
+
+var weatherApiSettings = new Stylora.Application.Models.WeatherApiSettings();
+builder.Configuration.GetSection("WeatherApi").Bind(weatherApiSettings);
+weatherApiSettings.ApiKey = Environment.GetEnvironmentVariable("OPENWEATHER_API_KEY")
+    ?? builder.Configuration["WeatherApi:ApiKey"]
+    ?? weatherApiSettings.ApiKey;
+
 builder.Services.AddApplicationServices();
-builder.Services.AddInfrastructureServices(geminiApiKey, connectionString, rapidApiKey, clothingValidationSettings);
+builder.Services.AddInfrastructureServices(
+    geminiApiKey,
+    connectionString,
+    rapidApiKey,
+    clothingValidationSettings,
+    outfitChatModelSettings,
+    weatherApiSettings);
 
 var app = builder.Build();
 

@@ -18,6 +18,7 @@ public class OutfitChatResponse
     public List<string> MissingFields { get; set; } = [];
     public List<string> MissingRoles { get; set; } = [];
     public List<string> SuggestedReplies { get; set; } = [];
+    public bool HasMoreOutfits { get; set; }
     public OutfitBoardDto? Outfit { get; set; }
 }
 
