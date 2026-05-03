@@ -19,6 +19,8 @@ public sealed class ClothingValidationSettings
     public string PythonExecutablePath { get; set; } = "../../armochromia_classifier/.venv/Scripts/python.exe";
     public string WorkerScriptPath { get; set; } = "Python/clip_image_embedding_worker.py";
     public string ModelId { get; set; } = "openai/clip-vit-base-patch32";
+    public int WorkerStartupTimeoutSeconds { get; set; } = 600;
+    public bool WarmupWorkerOnStartup { get; set; } = true;
     public int EmbeddingDimensions { get; set; } = 512;
 }
 

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Stylora.Application.Interfaces;
@@ -70,20 +71,41 @@ public class ClothingValidationService : IClothingValidationService
     private readonly IImageEmbeddingService _imageEmbeddingService;
     private readonly IClothingReferenceEmbeddingRepository _referenceRepository;
     private readonly ClothingValidationSettings _settings;
+    private readonly ILogger<ClothingValidationService> _logger;
 
     public ClothingValidationService(
         IImageEmbeddingService imageEmbeddingService,
         IClothingReferenceEmbeddingRepository referenceRepository,
-        ClothingValidationSettings settings)
+        ClothingValidationSettings settings,
+        ILogger<ClothingValidationService> logger)
     {
         _imageEmbeddingService = imageEmbeddingService;
         _referenceRepository = referenceRepository;
         _settings = settings;
+        _logger = logger;
     }
 
     public async Task<ClothingImageValidationResult> ValidateAsync(string imageBase64, CancellationToken cancellationToken = default)
     {
-        var embedding = await _imageEmbeddingService.EmbedImageAsync(imageBase64, cancellationToken);
+        float[] embedding;
+        try
+        {
+            embedding = await _imageEmbeddingService.EmbedImageAsync(imageBase64, cancellationToken);
+        }
+        catch (ArgumentException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (IsWorkerStartupFailure(ex))
+        {
+            _logger.LogWarning(ex, "Clothing validation worker is not ready yet.");
+            return CreateWorkerUnavailableResult();
+        }
+
         var neighbors = await _referenceRepository.GetNearestNeighborsAsync(embedding, _settings.TopK, cancellationToken);
         if (neighbors.Count == 0)
         {
@@ -156,6 +178,25 @@ public class ClothingValidationService : IClothingValidationService
             SuggestedColorFamily = extractedColor?.Family ?? Vote(clothingNeighbors, match => NormalizeValue(match.ColorFamily)),
             SuggestedUsage = suggestedUsage,
             SuggestedGender = suggestedGender
+        };
+    }
+
+    private static bool IsWorkerStartupFailure(Exception exception)
+    {
+        return exception is TimeoutException ||
+               exception is HttpRequestException ||
+               exception is InvalidOperationException;
+    }
+
+    private static ClothingImageValidationResult CreateWorkerUnavailableResult()
+    {
+        return new ClothingImageValidationResult
+        {
+            Status = ClothingValidationStatus.Warning,
+            IsLikelyClothing = false,
+            Confidence = 0,
+            Message = "Clothing validation is still warming up. Please retry in a moment, or continue and save the item anyway.",
+            NearestLabels = []
         };
     }
 

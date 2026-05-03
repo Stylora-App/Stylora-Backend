@@ -31,9 +31,11 @@ public static class DependencyInjection
         // Register Gemini AI service
         services.AddSingleton<IGeminiService>(sp => new GeminiService(geminiApiKey));
         services.AddSingleton(clothingValidationSettings);
-        services.AddSingleton<IImageEmbeddingService, ClipImageEmbeddingWorkerService>();
+        services.AddSingleton<ClipImageEmbeddingWorkerService>();
+        services.AddSingleton<IImageEmbeddingService>(sp => sp.GetRequiredService<ClipImageEmbeddingWorkerService>());
         services.AddScoped<IClothingValidationService, ClothingValidationService>();
         services.AddScoped<ClothingReferenceSeedService>();
+        services.AddHostedService<ClothingValidationWorkerWarmupHostedService>();
         services.AddHostedService<ClothingReferenceSeedingHostedService>();
         
         // Register ASOS shopping service

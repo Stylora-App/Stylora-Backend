@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
 using Stylora.Application.Services;
@@ -28,7 +29,8 @@ public class ClothingValidationServiceTests
                 Match(ClothingReferenceLabel.NonClothing, "n1", 0.42),
                 Match(ClothingReferenceLabel.NonClothing, "n2", 0.48),
             ]),
-            Settings);
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
 
         var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
@@ -50,7 +52,8 @@ public class ClothingValidationServiceTests
                 Match(ClothingReferenceLabel.Clothing, "c1", 0.4),
                 Match(ClothingReferenceLabel.Clothing, "c2", 0.45),
             ]),
-            Settings);
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
 
         var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
@@ -72,7 +75,8 @@ public class ClothingValidationServiceTests
                 Match(ClothingReferenceLabel.NonClothing, "n2", 0.23),
                 Match(ClothingReferenceLabel.NonClothing, "n3", 0.3),
             ]),
-            Settings);
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
 
         var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
@@ -86,7 +90,8 @@ public class ClothingValidationServiceTests
         var service = new ClothingValidationService(
             new ThrowingImageEmbeddingService(new ArgumentException("The uploaded image is not valid base64 data.")),
             new FakeReferenceRepository([]),
-            Settings);
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ValidateAsync("not-base64"));
 
@@ -106,7 +111,8 @@ public class ClothingValidationServiceTests
                     Match(ClothingReferenceLabel.Clothing, "c2", 0.12, categoryGroup: "top"),
                     Match(ClothingReferenceLabel.NonClothing, "n1", 0.4),
                 ]),
-            Settings);
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
 
         var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
@@ -128,7 +134,8 @@ public class ClothingValidationServiceTests
                 Match(ClothingReferenceLabel.NonClothing, "n1", 0.43),
                 Match(ClothingReferenceLabel.NonClothing, "n2", 0.49),
             ]),
-            Settings);
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
 
         var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
@@ -138,6 +145,22 @@ public class ClothingValidationServiceTests
         Assert.Equal("blue", result.SuggestedColorFamily);
         Assert.Equal("casual", result.SuggestedUsage);
         Assert.Equal("men", result.SuggestedGender);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ReturnsWarning_WhenEmbeddingWorkerIsStillStarting()
+    {
+        var service = new ClothingValidationService(
+            new ThrowingImageEmbeddingService(new TimeoutException("Worker startup timed out.")),
+            new FakeReferenceRepository([]),
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
+
+        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+
+        Assert.Equal(ClothingValidationStatus.Warning, result.Status);
+        Assert.False(result.IsLikelyClothing);
+        Assert.Contains("warming up", result.Message);
     }
 
     private static ClothingReferenceMatch Match(

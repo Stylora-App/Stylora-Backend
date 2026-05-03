@@ -12,7 +12,6 @@ namespace Stylora.Infrastructure.Services;
 
 public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IAsyncDisposable
 {
-    private static readonly TimeSpan WorkerStartupTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan WorkerHealthPollInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly ClothingValidationSettings _settings;
@@ -22,6 +21,7 @@ public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IA
     private Process? _process;
     private Uri? _workerBaseUri;
     private Task? _stderrPump;
+    private bool _isWorkerReady;
     private bool _disposed;
 
     public ClipImageEmbeddingWorkerService(
@@ -87,64 +87,101 @@ public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IA
         }
     }
 
+    public async Task WarmupAsync(CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureStartedAsync(cancellationToken);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     private async Task EnsureStartedAsync(CancellationToken cancellationToken)
     {
-        if (_process is { HasExited: false } && _workerBaseUri is not null)
+        if (_isWorkerReady && _process is { HasExited: false } && _workerBaseUri is not null)
         {
             return;
         }
 
-        var pythonPath = ResolvePath(_settings.PythonExecutablePath);
-        var scriptPath = ResolvePath(_settings.WorkerScriptPath);
-
-        if (!File.Exists(pythonPath))
+        if (_process is not { HasExited: false } || _workerBaseUri is null)
         {
-            throw new InvalidOperationException($"CLIP python runtime not found at '{pythonPath}'.");
-        }
+            var pythonPath = ResolvePath(_settings.PythonExecutablePath);
+            var scriptPath = ResolvePath(_settings.WorkerScriptPath);
 
-        if (!File.Exists(scriptPath))
-        {
-            throw new InvalidOperationException($"CLIP worker script not found at '{scriptPath}'.");
-        }
-
-        var port = FindAvailablePort();
-        _workerBaseUri = new Uri($"http://127.0.0.1:{port}/");
-
-        _process = new Process
-        {
-            StartInfo = new ProcessStartInfo
+            if (!File.Exists(pythonPath))
             {
-                FileName = pythonPath,
-                Arguments = $"-u \"{scriptPath}\" --model-id \"{_settings.ModelId}\" --port {port}",
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                StandardErrorEncoding = Encoding.UTF8
+                throw new InvalidOperationException($"CLIP python runtime not found at '{pythonPath}'.");
             }
-        };
 
-        if (!_process.Start())
-        {
-            throw new InvalidOperationException("Failed to start the CLIP embedding worker process.");
+            if (!File.Exists(scriptPath))
+            {
+                throw new InvalidOperationException($"CLIP worker script not found at '{scriptPath}'.");
+            }
+
+            var port = FindAvailablePort();
+            _workerBaseUri = new Uri($"http://127.0.0.1:{port}/");
+            _isWorkerReady = false;
+
+            _process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = pythonPath,
+                    Arguments = $"-u \"{scriptPath}\" --model-id \"{_settings.ModelId}\" --port {port}",
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardErrorEncoding = Encoding.UTF8
+                }
+            };
+
+            if (!_process.Start())
+            {
+                throw new InvalidOperationException("Failed to start the CLIP embedding worker process.");
+            }
+
+            _stderrPump = PumpStandardErrorAsync(_process.StandardError);
+            _logger.LogInformation("Waiting for CLIP embedding worker health check on port {Port}.", port);
         }
 
-        _stderrPump = PumpStandardErrorAsync(_process.StandardError);
-        _logger.LogInformation("Waiting for CLIP embedding worker health check on port {Port}.", port);
+        try
+        {
+            await WaitForWorkerReadyAsync(cancellationToken);
+        }
+        catch
+        {
+            _isWorkerReady = false;
+            throw;
+        }
+    }
 
-        var startupDeadline = DateTime.UtcNow + WorkerStartupTimeout;
+    private async Task WaitForWorkerReadyAsync(CancellationToken cancellationToken)
+    {
+        if (_process is null || _workerBaseUri is null)
+        {
+            throw new InvalidOperationException("The CLIP embedding worker process was not initialized.");
+        }
+
+        var process = _process;
+        var workerBaseUri = _workerBaseUri;
+        var startupDeadline = DateTime.UtcNow + GetWorkerStartupTimeout();
         while (DateTime.UtcNow < startupDeadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (_process.HasExited)
+            if (process.HasExited)
             {
                 throw new InvalidOperationException(
-                    $"The CLIP embedding worker exited during startup with code {_process.ExitCode}.");
+                    $"The CLIP embedding worker exited during startup with code {process.ExitCode}.");
             }
 
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_workerBaseUri, "health"))
+                using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(workerBaseUri, "health"))
                 {
                     Version = HttpVersion.Version11,
                     VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
@@ -157,6 +194,7 @@ public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IA
                     var ready = await response.Content.ReadFromJsonAsync<EmbeddingWorkerReadyResponse>(cancellationToken);
                     if (ready?.Ready == true)
                     {
+                        _isWorkerReady = true;
                         _logger.LogInformation(
                             "CLIP embedding worker initialized successfully with {Dimensions} dimensions.",
                             ready.Dimensions);
@@ -176,7 +214,13 @@ public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IA
             await Task.Delay(WorkerHealthPollInterval, cancellationToken);
         }
 
+        await StopWorkerProcessAsync();
         throw new TimeoutException("The CLIP embedding worker did not become healthy before the startup timeout elapsed.");
+    }
+
+    private TimeSpan GetWorkerStartupTimeout()
+    {
+        return TimeSpan.FromSeconds(Math.Max(30, _settings.WorkerStartupTimeoutSeconds));
     }
 
     private async Task PumpStandardErrorAsync(StreamReader stderr)
@@ -284,6 +328,16 @@ public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IA
         _disposed = true;
         _lock.Dispose();
 
+        await StopWorkerProcessAsync();
+
+        _process?.Dispose();
+        _httpClient.Dispose();
+    }
+
+    private async Task StopWorkerProcessAsync()
+    {
+        _isWorkerReady = false;
+
         if (_process is { HasExited: false } && _workerBaseUri is not null)
         {
             try
@@ -301,8 +355,10 @@ public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IA
             }
         }
 
+        _workerBaseUri = null;
         _process?.Dispose();
-        _httpClient.Dispose();
+        _process = null;
+        _stderrPump = null;
     }
 
     private sealed record ImagePayload(string MimeType, string Base64);
