@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<IWardrobeService, WardrobeService>();
         services.AddScoped<ITryOnService, TryOnService>();
         services.AddScoped<IExploreService, ExploreService>();
+        services.AddScoped<IOutfitChatService, OutfitChatService>();
 
         return services;
     }
