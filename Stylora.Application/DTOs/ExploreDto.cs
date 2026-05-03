@@ -9,6 +9,11 @@ public class ShoppingProductDto
     public string ImageUrl { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
     public string? Colour { get; set; }
+    public string? Category { get; set; }
+    public string? ArticleTypeLabel { get; set; }
+    public string? AudienceTag { get; set; }
+    public string? ColorFamily { get; set; }
+    public string? OutfitRole { get; set; }
     public bool PaletteMatch { get; set; }
 }
 

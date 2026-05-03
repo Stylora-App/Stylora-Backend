@@ -75,6 +75,8 @@ public class StyloraDbContext : DbContext
             entity.Property(e => e.Category).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.ArticleTypeLabel).HasMaxLength(100);
             entity.Property(e => e.AudienceTag).HasMaxLength(20);
+            entity.Property(e => e.UsageTag).HasMaxLength(50);
+            entity.Property(e => e.ColorFamily).HasMaxLength(30);
             entity.Property(e => e.Style).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.WornCount).HasDefaultValue(0);
             entity.Property(e => e.ValidationStatus).HasConversion<string>().HasMaxLength(20);
@@ -93,6 +95,9 @@ public class StyloraDbContext : DbContext
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.Category);
             entity.HasIndex(e => e.ArticleTypeLabel);
+            entity.HasIndex(e => e.AudienceTag);
+            entity.HasIndex(e => e.UsageTag);
+            entity.HasIndex(e => e.ColorFamily);
         });
 
         modelBuilder.Entity<ClothingReferenceEmbedding>(entity =>

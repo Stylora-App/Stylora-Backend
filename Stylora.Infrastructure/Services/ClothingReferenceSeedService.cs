@@ -363,8 +363,8 @@ public class ClothingReferenceSeedService
             SubCategory = subCategory,
             ArticleType = articleType,
             CategoryGroup = MapPrimaryCategoryGroup(masterCategory, subCategory, articleType),
-            BaseColour = NormalizeValue(row.BaseColour),
-            ColorFamily = MapColorFamily(row.BaseColour),
+            BaseColour = null,
+            ColorFamily = null,
             SeasonTag = NormalizeValue(row.SeasonTag),
             UsageTag = NormalizeValue(row.UsageTag),
             DisplayName = NormalizeValue(row.DisplayName)

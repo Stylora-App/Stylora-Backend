@@ -68,10 +68,15 @@ public class WardrobeController : BaseApiController
         return NoContent();
     }
 
-    [HttpPost("items/{id}/wear")]
-    public async Task<IActionResult> LogWear(string id)
+    [HttpPost("items/delete-batch")]
+    public async Task<IActionResult> DeleteItems([FromBody] DeleteWardrobeItemsRequest request)
     {
-        await _wardrobeService.IncrementWornCountAsync(GetUserId(), id);
-        return Ok();
+        if (request.ItemIds.Count == 0)
+        {
+            return BadRequest(new { message = "At least one wardrobe item id is required." });
+        }
+
+        var deletedCount = await _wardrobeService.DeleteItemsAsync(GetUserId(), request.ItemIds);
+        return Ok(new { deletedCount });
     }
 }

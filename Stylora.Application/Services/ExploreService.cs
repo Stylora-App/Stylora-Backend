@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
+using Stylora.Application.ClothingTags;
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
@@ -230,6 +231,7 @@ public class ExploreService : IExploreService
                 continue;
             }
 
+            EnrichProductTags(product, query.Gender);
             yield return CloneProduct(product);
         }
     }
@@ -385,8 +387,25 @@ public class ExploreService : IExploreService
         ImageUrl = product.ImageUrl,
         Url = product.Url,
         Colour = product.Colour,
+        Category = product.Category,
+        ArticleTypeLabel = product.ArticleTypeLabel,
+        AudienceTag = product.AudienceTag,
+        ColorFamily = product.ColorFamily,
+        OutfitRole = product.OutfitRole,
         PaletteMatch = product.PaletteMatch,
     };
+
+    private static void EnrichProductTags(ShoppingProductDto product, string? requestedGender)
+    {
+        var normalizedArticleType = ClothingTagTaxonomy.InferArticleTypeFromProductName(product.Name);
+        var normalizedCategory = ClothingTagTaxonomy.ResolveCategory(product.Category, normalizedArticleType);
+
+        product.ArticleTypeLabel = normalizedArticleType;
+        product.Category = normalizedCategory;
+        product.AudienceTag = ClothingTagTaxonomy.NormalizeAudienceTag(requestedGender);
+        product.ColorFamily = ClothingTagTaxonomy.NormalizeColorFamily(product.Colour);
+        product.OutfitRole = ClothingTagTaxonomy.ResolveOutfitRole(normalizedCategory, normalizedArticleType);
+    }
 
     private sealed record FilteredExploreQuery(
         string BrowseQuery,

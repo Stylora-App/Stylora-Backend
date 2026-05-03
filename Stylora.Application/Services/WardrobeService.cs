@@ -1,4 +1,5 @@
 using Stylora.Application.DTOs;
+using Stylora.Application.ClothingTags;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
 using Stylora.Domain.Entities;
@@ -44,12 +45,20 @@ public class WardrobeService : IWardrobeService
             };
         }
 
+        var resolvedArticleType = string.IsNullOrWhiteSpace(request.ArticleTypeLabel)
+            ? validation.SuggestedArticleType
+            : ClothingTagTaxonomy.NormalizeArticleType(request.ArticleTypeLabel);
+
         var resolvedCategory = string.IsNullOrWhiteSpace(request.Category)
-            ? validation.SuggestedCategory
+            ? ClothingTagTaxonomy.ResolveCategory(validation.SuggestedCategory, resolvedArticleType)
             : request.Category;
 
         if (!Enum.TryParse<ClothingCategory>(resolvedCategory, true, out var category))
             category = ClothingCategory.Top;
+
+        var resolvedAudienceTag = string.IsNullOrWhiteSpace(request.AudienceTag)
+            ? validation.SuggestedGender
+            : ClothingTagTaxonomy.NormalizeAudienceTag(request.AudienceTag);
 
         var resolvedStyle = string.IsNullOrWhiteSpace(request.Style)
             ? validation.SuggestedStyle
@@ -63,8 +72,8 @@ public class WardrobeService : IWardrobeService
         {
             ImagePath = request.Image,
             Category = category,
-            ArticleTypeLabel = validation.SuggestedArticleType,
-            AudienceTag = validation.SuggestedGender,
+            ArticleTypeLabel = resolvedArticleType,
+            AudienceTag = resolvedAudienceTag,
             Style = Enum.TryParse<StylePreference>(resolvedStyle, true, out var style) ? style : null,
             Color = await _wardrobeRepository.ResolveColorAsync(resolvedColor),
             ValidationStatus = validation.Status,
@@ -86,9 +95,14 @@ public class WardrobeService : IWardrobeService
         return await _wardrobeRepository.DeleteItemAsync(userId, itemId);
     }
 
-    public async Task IncrementWornCountAsync(string userId, string itemId)
+    public async Task<int> DeleteItemsAsync(string userId, IReadOnlyCollection<string> itemIds)
     {
-        await _wardrobeRepository.IncrementWornCountAsync(userId, itemId);
+        if (itemIds.Count == 0)
+        {
+            return 0;
+        }
+
+        return await _wardrobeRepository.DeleteItemsAsync(userId, itemIds);
     }
 
     private static WardrobeItemDto MapToDto(WardrobeItem item)
@@ -102,7 +116,7 @@ public class WardrobeService : IWardrobeService
             AudienceTag = item.AudienceTag,
             Style = item.Style?.ToString().ToLowerInvariant(),
             Color = item.Color?.HexCode ?? item.Color?.Name,
-            WornCount = item.WornCount,
+            OutfitRole = ClothingTagTaxonomy.ResolveOutfitRole(item.Category.ToString(), item.ArticleTypeLabel),
             ValidationStatus = item.ValidationStatus?.ToString().ToLowerInvariant(),
             ValidationConfidence = item.ValidationConfidence,
             ValidationMessage = item.ValidationMessage,
@@ -124,9 +138,8 @@ public class WardrobeService : IWardrobeService
             SuggestedArticleType = validation.SuggestedArticleType,
             SuggestedStyle = validation.SuggestedStyle,
             SuggestedColor = validation.SuggestedColor,
-            SuggestedColorFamily = validation.SuggestedColorFamily,
-            SuggestedUsage = validation.SuggestedUsage,
-            SuggestedGender = validation.SuggestedGender
+            SuggestedGender = validation.SuggestedGender,
+            SuggestedOutfitRole = validation.SuggestedOutfitRole
         };
     }
 }

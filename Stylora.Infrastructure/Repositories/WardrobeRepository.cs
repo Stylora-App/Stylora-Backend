@@ -91,6 +91,32 @@ public class WardrobeRepository : IWardrobeRepository
         return true;
     }
 
+    public async Task<int> DeleteItemsAsync(string userId, IEnumerable<string> itemIds)
+    {
+        if (!Guid.TryParse(userId, out var userGuid))
+            return 0;
+
+        var itemGuids = itemIds
+            .Select(id => Guid.TryParse(id, out var itemGuid) ? itemGuid : Guid.Empty)
+            .Where(itemGuid => itemGuid != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (itemGuids.Count == 0)
+            return 0;
+
+        var items = await _context.WardrobeItems
+            .Where(w => w.UserId == userGuid && itemGuids.Contains(w.Id))
+            .ToListAsync();
+
+        if (items.Count == 0)
+            return 0;
+
+        _context.WardrobeItems.RemoveRange(items);
+        await _context.SaveChangesAsync();
+        return items.Count;
+    }
+
     public async Task<WardrobeItem?> UpdateItemAsync(string userId, WardrobeItem item)
     {
         if (!Guid.TryParse(userId, out var userGuid))
@@ -106,6 +132,8 @@ public class WardrobeRepository : IWardrobeRepository
         existingItem.Category = item.Category;
         existingItem.ArticleTypeLabel = item.ArticleTypeLabel;
         existingItem.AudienceTag = item.AudienceTag;
+        existingItem.UsageTag = item.UsageTag;
+        existingItem.ColorFamily = item.ColorFamily;
         existingItem.Style = item.Style;
         existingItem.ColorId = item.ColorId;
         existingItem.ValidationStatus = item.ValidationStatus;
@@ -118,19 +146,4 @@ public class WardrobeRepository : IWardrobeRepository
         return existingItem;
     }
 
-    public async Task IncrementWornCountAsync(string userId, string itemId)
-    {
-        if (!Guid.TryParse(userId, out var userGuid) || !Guid.TryParse(itemId, out var itemGuid))
-            return;
-
-        var item = await _context.WardrobeItems
-            .FirstOrDefaultAsync(w => w.UserId == userGuid && w.Id == itemGuid);
-
-        if (item != null)
-        {
-            item.WornCount++;
-            item.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-        }
-    }
 }

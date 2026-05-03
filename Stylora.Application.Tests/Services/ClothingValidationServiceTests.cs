@@ -141,8 +141,6 @@ public class ClothingValidationServiceTests
 
         Assert.Equal("top", result.SuggestedCategory);
         Assert.Equal("casual", result.SuggestedStyle);
-        Assert.Equal("Navy Blue", result.SuggestedColor);
-        Assert.Equal("blue", result.SuggestedColorFamily);
         Assert.Equal("casual", result.SuggestedUsage);
         Assert.Equal("men", result.SuggestedGender);
     }
@@ -161,6 +159,48 @@ public class ClothingValidationServiceTests
         Assert.Equal(ClothingValidationStatus.Warning, result.Status);
         Assert.False(result.IsLikelyClothing);
         Assert.Contains("warming up", result.Message);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_IgnoresExcludedEthnicUsage_WhenNonEthnicSuggestionsRemain()
+    {
+        var service = new ClothingValidationService(
+            new FakeImageEmbeddingService(),
+            new FakeReferenceRepository(
+            [
+                Match(ClothingReferenceLabel.Clothing, "c1", 0.05, categoryGroup: "top", articleType: "kurtas", usageTag: "ethnic", genderTag: "women"),
+                Match(ClothingReferenceLabel.Clothing, "c2", 0.08, categoryGroup: "dress", articleType: "dresses", usageTag: "casual", genderTag: "women"),
+                Match(ClothingReferenceLabel.Clothing, "c3", 0.11, categoryGroup: "dress", articleType: "dresses", usageTag: "casual", genderTag: "women"),
+                Match(ClothingReferenceLabel.NonClothing, "n1", 0.45),
+            ]),
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
+
+        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+
+        Assert.Equal("dress", result.SuggestedCategory);
+        Assert.Equal("dress", result.SuggestedArticleType);
+        Assert.Equal("one_piece", result.SuggestedOutfitRole);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_PrefersMenOverUnisex_WhenMenSignalClearlyWins()
+    {
+        var service = new ClothingValidationService(
+            new FakeImageEmbeddingService(),
+            new FakeReferenceRepository(
+            [
+                Match(ClothingReferenceLabel.Clothing, "c1", 0.06, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "men"),
+                Match(ClothingReferenceLabel.Clothing, "c2", 0.07, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "men"),
+                Match(ClothingReferenceLabel.Clothing, "c3", 0.10, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "unisex"),
+                Match(ClothingReferenceLabel.NonClothing, "n1", 0.40),
+            ]),
+            Settings,
+            NullLogger<ClothingValidationService>.Instance);
+
+        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+
+        Assert.Equal("men", result.SuggestedGender);
     }
 
     private static ClothingReferenceMatch Match(

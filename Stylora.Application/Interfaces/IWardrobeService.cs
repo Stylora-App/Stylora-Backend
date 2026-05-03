@@ -8,5 +8,5 @@ public interface IWardrobeService
     Task<WardrobeValidationDto> AnalyzeItemAsync(AnalyzeWardrobeItemRequest request);
     Task<CreateWardrobeItemResponse> AddItemAsync(string userId, CreateWardrobeItemRequest request);
     Task<bool> DeleteItemAsync(string userId, string itemId);
-    Task IncrementWornCountAsync(string userId, string itemId);
+    Task<int> DeleteItemsAsync(string userId, IReadOnlyCollection<string> itemIds);
 }

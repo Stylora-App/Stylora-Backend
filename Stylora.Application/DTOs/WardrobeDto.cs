@@ -9,7 +9,7 @@ public class WardrobeItemDto
     public string? AudienceTag { get; set; }
     public string? Style { get; set; }
     public string? Color { get; set; }
-    public int WornCount { get; set; }
+    public string? OutfitRole { get; set; }
     public string? ValidationStatus { get; set; }
     public double? ValidationConfidence { get; set; }
     public string? ValidationMessage { get; set; }
@@ -20,6 +20,8 @@ public class CreateWardrobeItemRequest
 {
     public string Image { get; set; } = string.Empty;
     public string? Category { get; set; }
+    public string? ArticleTypeLabel { get; set; }
+    public string? AudienceTag { get; set; }
     public string? Style { get; set; }
     public string? Color { get; set; }
     public bool OverrideValidationWarning { get; set; }
@@ -28,6 +30,11 @@ public class CreateWardrobeItemRequest
 public class AnalyzeWardrobeItemRequest
 {
     public string Image { get; set; } = string.Empty;
+}
+
+public class DeleteWardrobeItemsRequest
+{
+    public List<string> ItemIds { get; set; } = [];
 }
 
 public class WardrobeValidationDto
@@ -42,9 +49,8 @@ public class WardrobeValidationDto
     public string? SuggestedArticleType { get; set; }
     public string? SuggestedStyle { get; set; }
     public string? SuggestedColor { get; set; }
-    public string? SuggestedColorFamily { get; set; }
-    public string? SuggestedUsage { get; set; }
     public string? SuggestedGender { get; set; }
+    public string? SuggestedOutfitRole { get; set; }
 }
 
 public class CreateWardrobeItemResponse

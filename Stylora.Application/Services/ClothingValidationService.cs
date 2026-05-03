@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using Stylora.Application.ClothingTags;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
 using Stylora.Domain.Enums;
@@ -130,6 +131,7 @@ public class ClothingValidationService : IClothingValidationService
         var clothingNeighbors = scoredNeighbors
             .Where(entry => entry.Match.Label == ClothingReferenceLabel.Clothing)
             .ToList();
+        var metadataNeighbors = FilterMetadataNeighbors(clothingNeighbors);
 
         var clothingScore = scoredNeighbors
             .Where(entry => entry.Match.Label == ClothingReferenceLabel.Clothing)
@@ -155,14 +157,14 @@ public class ClothingValidationService : IClothingValidationService
                 ? "This image might be a clothing item, but the validator is not confident. You can still save it."
                 : "This image does not look like a clothing item to the validator. You can still save it if that is intentional.";
 
-        var suggestedArticleType = ResolveArticleType(clothingNeighbors);
-        var suggestedCategory = ResolveCategory(suggestedArticleType, clothingNeighbors);
+        var suggestedArticleType = ResolveArticleType(metadataNeighbors);
+        var suggestedCategory = ResolveCategory(suggestedArticleType, metadataNeighbors);
         var extractedColor = TryExtractColor(imageBase64, suggestedCategory);
-        var suggestedUsage = Vote(clothingNeighbors, match => NormalizeUsage(match.UsageTag));
+        var suggestedUsage = Vote(metadataNeighbors, match => NormalizeUsage(match.UsageTag));
         var suggestedStyle = suggestedUsage is null
             ? null
             : UsageToStyleMap.GetValueOrDefault(suggestedUsage);
-        var suggestedGender = ResolveGender(clothingNeighbors, suggestedArticleType);
+        var suggestedGender = ResolveGender(metadataNeighbors, suggestedArticleType);
 
         return new ClothingImageValidationResult
         {
@@ -174,11 +176,33 @@ public class ClothingValidationService : IClothingValidationService
             SuggestedCategory = suggestedCategory,
             SuggestedArticleType = suggestedArticleType,
             SuggestedStyle = suggestedStyle,
-            SuggestedColor = extractedColor?.DisplayName ?? Vote(clothingNeighbors, match => NormalizeDisplayColor(match.BaseColour)),
-            SuggestedColorFamily = extractedColor?.Family ?? Vote(clothingNeighbors, match => NormalizeValue(match.ColorFamily)),
+            SuggestedColor = extractedColor?.DisplayName,
+            SuggestedColorFamily = extractedColor?.Family,
             SuggestedUsage = suggestedUsage,
-            SuggestedGender = suggestedGender
+            SuggestedGender = suggestedGender,
+            SuggestedOutfitRole = ClothingTagTaxonomy.ResolveOutfitRole(suggestedCategory, suggestedArticleType)
         };
+    }
+
+    private IReadOnlyList<ScoredMatch> FilterMetadataNeighbors(IReadOnlyList<ScoredMatch> clothingNeighbors)
+    {
+        if (clothingNeighbors.Count == 0 || _settings.ExcludedUsageTagsForSuggestions.Count == 0)
+        {
+            return clothingNeighbors;
+        }
+
+        var excludedUsageTags = _settings.ExcludedUsageTagsForSuggestions
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim().ToLowerInvariant())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var filtered = clothingNeighbors
+            .Where(neighbor => !excludedUsageTags.Contains(NormalizeValue(neighbor.Match.UsageTag) ?? string.Empty))
+            .ToList();
+
+        return filtered.Count >= Math.Min(2, clothingNeighbors.Count)
+            ? filtered
+            : clothingNeighbors;
     }
 
     private static bool IsWorkerStartupFailure(Exception exception)
@@ -271,30 +295,45 @@ public class ClothingValidationService : IClothingValidationService
         var normalizedArticleType = NormalizeArticleType(articleType);
         if (normalizedArticleType is not null)
         {
+            var menScore = scores.GetValueOrDefault("men");
+            var womenScore = scores.GetValueOrDefault("women");
+            var unisexScore = scores.GetValueOrDefault("unisex");
+
             if (WomenBiasedArticleTypes.Contains(normalizedArticleType))
             {
                 return "women";
             }
 
             if (MenBiasedArticleTypes.Contains(normalizedArticleType) &&
-                best.Value >= (second.Value > 0 ? second.Value * 1.15d : 0.2d))
+                menScore >= Math.Max(womenScore, unisexScore) * 1.05d)
             {
                 return "men";
             }
 
             if (UnisexFriendlyArticleTypes.Contains(normalizedArticleType))
             {
-                if (scores.TryGetValue("unisex", out var unisexScore) && unisexScore >= best.Value * 0.6d)
+                if (unisexScore > 0d && unisexScore >= Math.Max(menScore, womenScore) * 1.05d)
                 {
                     return "unisex";
                 }
 
-                if (best.Key is "men" or "women")
+                if (menScore > 0d && womenScore > 0d)
                 {
-                    if (second.Value >= best.Value * 0.45d || second.Value == 0d)
+                    var maxGenderScore = Math.Max(menScore, womenScore);
+                    if (Math.Abs(menScore - womenScore) <= maxGenderScore * 0.2d)
                     {
                         return "unisex";
                     }
+                }
+
+                if (menScore > womenScore)
+                {
+                    return "men";
+                }
+
+                if (womenScore > menScore)
+                {
+                    return "women";
                 }
             }
         }
@@ -480,22 +519,32 @@ public class ClothingValidationService : IClothingValidationService
 
     private static string? DetermineColorFamily(HsvColor hsv)
     {
-        if (hsv.Value <= 0.18f)
+        if (hsv.Value <= 0.12f)
         {
             return "black";
         }
 
-        if (hsv.Saturation <= 0.12f)
+        if (hsv.Saturation <= 0.10f)
         {
             if (hsv.Value >= 0.88f)
             {
                 return "white";
             }
 
-            return hsv.Value >= 0.5f ? "gray" : "black";
+            return hsv.Value >= 0.32f ? "gray" : "black";
         }
 
-        if (hsv.Value <= 0.48f && hsv.Hue is >= 12f and <= 48f)
+        if (hsv.Hue is >= 330f or < 15f && hsv.Value >= 0.72f && hsv.Saturation <= 0.45f)
+        {
+            return "pink";
+        }
+
+        if (hsv.Value <= 0.55f && hsv.Hue is >= 12f and <= 48f)
+        {
+            return "brown";
+        }
+
+        if (hsv.Hue is >= 18f and <= 42f && hsv.Value >= 0.58f && hsv.Saturation <= 0.55f)
         {
             return "brown";
         }
@@ -516,16 +565,20 @@ public class ClothingValidationService : IClothingValidationService
     private static string DetermineDisplayColorName(string family, ColorBucket bucket)
     {
         var averageHue = bucket.Weight <= 0 ? 0 : bucket.HueSum / bucket.Weight;
+        var averageSaturation = bucket.Weight <= 0 ? 0 : bucket.SaturationSum / bucket.Weight;
         var averageValue = bucket.Weight <= 0 ? 0 : bucket.ValueSum / bucket.Weight;
 
         return family switch
         {
             "blue" when averageValue < 0.42d => "navy blue",
             "blue" when averageValue > 0.72d => "light blue",
+            "pink" when averageValue > 0.8d => "light pink",
             "red" when averageValue < 0.4d => "burgundy",
+            "brown" when averageHue >= 20d && averageHue <= 38d && averageValue >= 0.62d && averageSaturation <= 0.55d => "camel",
             "brown" when averageValue > 0.62d => "beige",
             "gray" when averageValue > 0.78d => "light gray",
             "gray" when averageValue < 0.32d => "charcoal",
+            "gray" when averageSaturation <= 0.06d && averageValue < 0.48d => "charcoal",
             "green" when averageHue >= 70d && averageHue <= 95d => "olive",
             "purple" when averageHue >= 300d && averageValue > 0.75d => "pink",
             _ => family switch
@@ -533,6 +586,7 @@ public class ClothingValidationService : IClothingValidationService
                 "black" => "black",
                 "white" => "white",
                 "gray" => "gray",
+                "pink" => "pink",
                 "red" => "red",
                 "orange" => "orange",
                 "yellow" => "yellow",
@@ -563,133 +617,27 @@ public class ClothingValidationService : IClothingValidationService
 
     private static string? NormalizeArticleType(string? articleType)
     {
-        var normalized = NormalizeValue(articleType);
-        if (normalized is null)
-        {
-            return null;
-        }
-
-        normalized = normalized.Replace("tshirts", "t-shirts", StringComparison.OrdinalIgnoreCase);
-        return normalized switch
-        {
-            "t-shirts" or "t-shirt" or "tees" or "tee" => "t-shirt",
-            "shirts" => "shirt",
-            "tops" => "top",
-            "tunics" => "tunic",
-            "blouses" => "blouse",
-            "kurtas" => "kurta",
-            "sweatshirts" => "sweatshirt",
-            "sweaters" => "sweater",
-            "jumpers" => "jumper",
-            "cardigans" => "cardigan",
-            "jackets" => "jacket",
-            "coats" => "coat",
-            "blazers" => "blazer",
-            "dresses" => "dress",
-            "jeans" => "jeans",
-            "trousers" => "trousers",
-            "pants" or "track pants" => "pants",
-            "shorts" => "shorts",
-            "skirts" => "skirt",
-            "jumpsuits" => "jumpsuit",
-            "rompers" => "romper",
-            "night suits" => "lounge set",
-            "casual shoes" or "sports shoes" or "formal shoes" => "shoes",
-            "flats" => "flats",
-            "heels" => "heels",
-            "sandals" => "sandals",
-            "boots" => "boots",
-            "sneakers" => "sneakers",
-            "watches" => "watch",
-            "bags" => "bag",
-            "belts" => "belt",
-            "sunglasses" => "sunglasses",
-            "caps" => "cap",
-            _ when normalized.Contains("long sleeve", StringComparison.OrdinalIgnoreCase) => "long sleeve top",
-            _ when normalized.Contains("dress", StringComparison.OrdinalIgnoreCase) => "dress",
-            _ when normalized.Contains("jumpsuit", StringComparison.OrdinalIgnoreCase) => "jumpsuit",
-            _ when normalized.Contains("romper", StringComparison.OrdinalIgnoreCase) => "romper",
-            _ when normalized.Contains("shirt", StringComparison.OrdinalIgnoreCase) => "shirt",
-            _ when normalized.Contains("blouse", StringComparison.OrdinalIgnoreCase) => "blouse",
-            _ when normalized.Contains("cardigan", StringComparison.OrdinalIgnoreCase) => "cardigan",
-            _ when normalized.Contains("hoodie", StringComparison.OrdinalIgnoreCase) => "hoodie",
-            _ when normalized.Contains("sweatshirt", StringComparison.OrdinalIgnoreCase) => "sweatshirt",
-            _ when normalized.Contains("jacket", StringComparison.OrdinalIgnoreCase) => "jacket",
-            _ when normalized.Contains("coat", StringComparison.OrdinalIgnoreCase) => "coat",
-            _ when normalized.Contains("blazer", StringComparison.OrdinalIgnoreCase) => "blazer",
-            _ when normalized.Contains("jean", StringComparison.OrdinalIgnoreCase) => "jeans",
-            _ when normalized.Contains("trouser", StringComparison.OrdinalIgnoreCase) => "trousers",
-            _ when normalized.Contains("pant", StringComparison.OrdinalIgnoreCase) => "pants",
-            _ when normalized.Contains("short", StringComparison.OrdinalIgnoreCase) => "shorts",
-            _ when normalized.Contains("skirt", StringComparison.OrdinalIgnoreCase) => "skirt",
-            _ when normalized.Contains("shoe", StringComparison.OrdinalIgnoreCase) => "shoes",
-            _ when normalized.Contains("sneaker", StringComparison.OrdinalIgnoreCase) => "sneakers",
-            _ when normalized.Contains("boot", StringComparison.OrdinalIgnoreCase) => "boots",
-            _ when normalized.Contains("sandal", StringComparison.OrdinalIgnoreCase) => "sandals",
-            _ => normalized
-        };
+        return ClothingTagTaxonomy.NormalizeArticleType(articleType);
     }
 
     private static string? MapBroadCategory(string? articleType)
     {
-        var normalized = NormalizeArticleType(articleType);
-        if (normalized is null)
-        {
-            return null;
-        }
-
-        return normalized switch
-        {
-            "dress" or "cami dress" or "slip dress" => "dress",
-            "jumpsuit" or "romper" => "jumpsuit",
-            "jeans" or "trousers" or "pants" or "shorts" or "skirt" => "bottom",
-            "jacket" or "coat" or "blazer" or "hoodie" or "sweatshirt" or "cardigan" => "outerwear",
-            "shoes" or "sneakers" or "boots" or "sandals" or "heels" or "flats" => "shoes",
-            "watch" or "bag" or "belt" or "sunglasses" or "cap" => "accessories",
-            _ => normalized switch
-            {
-                "top" or "t-shirt" or "shirt" or "blouse" or "kurta" or "tunic" or "long sleeve top" or "sweater" or "jumper" or "polo" => "top",
-                _ => null
-            }
-        };
+        return ClothingTagTaxonomy.ResolveCategory(null, articleType);
     }
 
     private static string? NormalizeCategory(string? category)
     {
-        var normalized = NormalizeValue(category);
-        return normalized switch
-        {
-            "tops" => "top",
-            "bottoms" => "bottom",
-            "dresses" => "dress",
-            "jumpsuits" => "jumpsuit",
-            "shoe" => "shoes",
-            "accessory" => "accessories",
-            _ => normalized
-        };
+        return ClothingTagTaxonomy.NormalizeCategory(category);
     }
 
     private static string? NormalizeUsage(string? usage)
     {
-        var normalized = NormalizeValue(usage);
-        return normalized switch
-        {
-            "smart casual" => "casual",
-            "party" => "elegant",
-            _ => normalized
-        };
+        return ClothingTagTaxonomy.NormalizeUsageTag(usage);
     }
 
     private static string? NormalizeGender(string? gender)
     {
-        var normalized = NormalizeValue(gender);
-        return normalized switch
-        {
-            "men" => "men",
-            "women" => "women",
-            "unisex" => "unisex",
-            _ => null
-        };
+        return ClothingTagTaxonomy.NormalizeAudienceTag(gender);
     }
 
     private static string? NormalizeDisplayColor(string? value)

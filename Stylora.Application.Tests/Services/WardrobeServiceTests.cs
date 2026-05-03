@@ -106,7 +106,10 @@ public class WardrobeServiceTests
                 NearestLabels = ["clothing"],
                 SuggestedCategory = "outerwear",
                 SuggestedStyle = "casual",
-                SuggestedColor = "navy blue"
+                SuggestedColor = "navy blue",
+                SuggestedGender = "women",
+                SuggestedArticleType = "jacket",
+                SuggestedOutfitRole = "layer"
             }));
 
         var response = await service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
@@ -118,8 +121,68 @@ public class WardrobeServiceTests
         Assert.Equal(ClothingCategory.Outerwear, saved.Category);
         Assert.Equal(StylePreference.Casual, saved.Style);
         Assert.Equal("navy blue", saved.Color?.Name);
+        Assert.Equal("women", saved.AudienceTag);
+        Assert.Equal("jacket", saved.ArticleTypeLabel);
         Assert.Equal("outerwear", response.Item!.Category);
         Assert.Equal("navy blue", response.Item.Color);
+        Assert.Equal("layer", response.Item.OutfitRole);
+    }
+
+    [Fact]
+    public async Task AddItemAsync_UsesManualOverrideTags_WhenRequestProvidesThem()
+    {
+        var repository = new FakeWardrobeRepository();
+        var service = new WardrobeService(
+            repository,
+            new FakeClothingValidationService(new ClothingImageValidationResult
+            {
+                Status = ClothingValidationStatus.Pass,
+                IsLikelyClothing = true,
+                Confidence = 0.82,
+                Message = "ok",
+                NearestLabels = ["clothing"],
+                SuggestedCategory = "top",
+                SuggestedArticleType = "shirt",
+                SuggestedGender = "unisex",
+                SuggestedColor = "red"
+            }));
+
+        var response = await service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
+        {
+            Image = "data:image/png;base64,aGVsbG8=",
+            Category = "outerwear",
+            ArticleTypeLabel = "blazer",
+            AudienceTag = "men",
+            Style = "Formal",
+            Color = "charcoal"
+        });
+
+        var saved = Assert.Single(repository.Items);
+        Assert.Equal("blazer", saved.ArticleTypeLabel);
+        Assert.Equal("men", saved.AudienceTag);
+        Assert.Equal(StylePreference.Formal, saved.Style);
+        Assert.Equal("charcoal", saved.Color?.Name);
+        Assert.Equal("layer", response.Item!.OutfitRole);
+    }
+
+    [Fact]
+    public async Task DeleteItemsAsync_DeletesOnlyRequestedItems()
+    {
+        var repository = new FakeWardrobeRepository();
+        var first = new WardrobeItem { Id = Guid.NewGuid() };
+        var second = new WardrobeItem { Id = Guid.NewGuid() };
+        var third = new WardrobeItem { Id = Guid.NewGuid() };
+        repository.Items.AddRange([first, second, third]);
+
+        var service = new WardrobeService(
+            repository,
+            new FakeClothingValidationService(new ClothingImageValidationResult()));
+
+        var deleted = await service.DeleteItemsAsync(Guid.NewGuid().ToString(), [first.Id.ToString(), third.Id.ToString()]);
+
+        Assert.Equal(2, deleted);
+        Assert.Single(repository.Items);
+        Assert.Equal(second.Id, repository.Items.Single().Id);
     }
 
     private sealed class FakeClothingValidationService : IClothingValidationService
@@ -147,16 +210,23 @@ public class WardrobeServiceTests
         }
 
         public Task<bool> DeleteItemAsync(string userId, string itemId)
-            => Task.FromResult(false);
+        {
+            var removed = Items.RemoveAll(item => item.Id.ToString() == itemId);
+            return Task.FromResult(removed > 0);
+        }
+
+        public Task<int> DeleteItemsAsync(string userId, IEnumerable<string> itemIds)
+        {
+            var ids = itemIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var removed = Items.RemoveAll(item => ids.Contains(item.Id.ToString()));
+            return Task.FromResult(removed);
+        }
 
         public Task<IEnumerable<WardrobeItem>> GetAllItemsAsync(string userId)
             => Task.FromResult<IEnumerable<WardrobeItem>>(Items);
 
         public Task<WardrobeItem?> GetItemByIdAsync(string userId, string itemId)
             => Task.FromResult<WardrobeItem?>(Items.FirstOrDefault());
-
-        public Task IncrementWornCountAsync(string userId, string itemId)
-            => Task.CompletedTask;
 
         public Task<Color?> ResolveColorAsync(string? colorName)
             => Task.FromResult<Color?>(string.IsNullOrWhiteSpace(colorName) ? null : new Color

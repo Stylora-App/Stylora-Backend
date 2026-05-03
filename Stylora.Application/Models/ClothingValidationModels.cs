@@ -22,6 +22,7 @@ public sealed class ClothingValidationSettings
     public int WorkerStartupTimeoutSeconds { get; set; } = 600;
     public bool WarmupWorkerOnStartup { get; set; } = true;
     public int EmbeddingDimensions { get; set; } = 512;
+    public List<string> ExcludedUsageTagsForSuggestions { get; set; } = ["ethnic"];
 }
 
 public sealed record ClothingReferenceMatch(
@@ -54,4 +55,5 @@ public sealed class ClothingImageValidationResult
     public string? SuggestedColorFamily { get; init; }
     public string? SuggestedUsage { get; init; }
     public string? SuggestedGender { get; init; }
+    public string? SuggestedOutfitRole { get; init; }
 }
