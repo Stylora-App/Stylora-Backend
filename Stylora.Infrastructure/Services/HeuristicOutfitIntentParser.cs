@@ -47,10 +47,16 @@ internal sealed class HeuristicOutfitIntentParser
         ["brunch"] = "casual",
         ["errands"] = "casual",
         ["weekend"] = "casual",
+        ["trip"] = "casual",
+        ["travel"] = "casual",
+        ["vacation"] = "casual",
+        ["holiday"] = "casual",
+        ["flight"] = "casual",
         ["work"] = "office",
         ["office"] = "office",
         ["meeting"] = "office",
         ["interview"] = "formal",
+        ["conference"] = "formal",
         ["theatre"] = "elegant",
         ["theater"] = "elegant",
         ["film"] = "elegant",
@@ -92,7 +98,7 @@ internal sealed class HeuristicOutfitIntentParser
         }
 
         var fullConversation = string.Join(' ', userMessages);
-        if (!ScopeKeywords.Any(keyword => fullConversation.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+        if (!HasOutfitSignals(fullConversation))
         {
             return new OutfitIntentResult
             {
@@ -166,8 +172,23 @@ internal sealed class HeuristicOutfitIntentParser
             }
         }
 
+        intent.DateContext ??= "today";
         intent.Intent = intent.ShuffleCount > 0 ? "shuffle_outfit" : "generate_outfit";
         return intent;
+    }
+
+    private static bool HasOutfitSignals(string message)
+    {
+        return ScopeKeywords.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            || AllowedStyles.Any(style => message.Contains(style, StringComparison.OrdinalIgnoreCase))
+            || StyleByOccasion.Keys.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            || WeatherStatusKeywords.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            || message.Contains("cold", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("cool", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("warm", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("hot", StringComparison.OrdinalIgnoreCase)
+            || DateKeywords.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            || !string.IsNullOrWhiteSpace(ExtractLocation(message));
     }
 
     private static WeatherExtraction? ExtractWeather(string message)
@@ -275,60 +296,62 @@ internal sealed class HeuristicOutfitIntentParser
     private static string? ExtractLocationAfterPreposition(string message)
     {
         return ExtractLocationAfterKeyword(message, "in")
+            ?? ExtractLocationAfterKeyword(message, "to")
             ?? ExtractLocationAfterKeyword(message, "for");
     }
 
     private static string? ExtractLocationAfterKeyword(string message, string keyword)
     {
-        var match = Regex.Match(
+        var matches = Regex.Matches(
             message,
-            $@"\b{keyword}\b\s+(.+)",
+            $@"\b{keyword}\b\s+(.+?)(?=(?:\b(?:in|to|for)\b\s+)|$)",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-        if (!match.Success)
+        for (var i = matches.Count - 1; i >= 0; i--)
         {
-            return null;
-        }
-
-        var tail = match.Groups[1].Value.Trim();
-        if (string.IsNullOrWhiteSpace(tail))
-        {
-            return null;
-        }
-
-        var words = tail
-            .Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToList();
-
-        var candidateWords = new List<string>();
-        foreach (var rawWord in words)
-        {
-            var cleanedWord = rawWord.Trim(',', '.', '!', '?', ';', ':');
-            if (string.IsNullOrWhiteSpace(cleanedWord))
+            var tail = matches[i].Groups[1].Value.Trim();
+            if (string.IsNullOrWhiteSpace(tail))
             {
                 continue;
             }
 
-            if (LocationStopWords.Contains(cleanedWord.ToLowerInvariant()))
+            var words = tail
+                .Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+            var candidateWords = new List<string>();
+            foreach (var rawWord in words)
             {
-                break;
+                var cleanedWord = rawWord.Trim(',', '.', '!', '?', ';', ':');
+                if (string.IsNullOrWhiteSpace(cleanedWord))
+                {
+                    continue;
+                }
+
+                if (LocationStopWords.Contains(cleanedWord.ToLowerInvariant()))
+                {
+                    break;
+                }
+
+                if (!Regex.IsMatch(cleanedWord, @"^[A-Za-z-]+$", RegexOptions.CultureInvariant))
+                {
+                    break;
+                }
+
+                candidateWords.Add(cleanedWord);
+                if (candidateWords.Count == 4)
+                {
+                    break;
+                }
             }
 
-            if (!Regex.IsMatch(cleanedWord, @"^[A-Za-z-]+$", RegexOptions.CultureInvariant))
+            if (candidateWords.Count > 0)
             {
-                break;
-            }
-
-            candidateWords.Add(cleanedWord);
-            if (candidateWords.Count == 4)
-            {
-                break;
+                return string.Join(' ', candidateWords);
             }
         }
 
-        return candidateWords.Count == 0
-            ? null
-            : string.Join(' ', candidateWords);
+        return null;
     }
 
     private static IEnumerable<string> SplitMessageSegments(string message)

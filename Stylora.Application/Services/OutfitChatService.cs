@@ -8,6 +8,7 @@ namespace Stylora.Application.Services;
 public class OutfitChatService : IOutfitChatService
 {
     private static readonly string[] ShuffleKeywords = ["shuffle", "another option", "another look", "different option", "different outfit"];
+    private static readonly string[] ThermalKeywords = ["freezing", "cold", "chilly", "cool", "warm", "hot"];
     private static readonly HashSet<string> LocationStopWords =
     [
         "for",
@@ -45,6 +46,7 @@ public class OutfitChatService : IOutfitChatService
     private static readonly string[] ScopeKeywords = ["outfit", "wear", "wearing", "look", "dress", "style", "wardrobe", "shuffle", "another option"];
     private static readonly string[] WeatherStatusKeywords = ["sunny", "cloudy", "rainy", "windy", "snowy", "stormy"];
     private static readonly string[] DateKeywords = ["today", "tonight", "tomorrow", "weekend", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+    private static readonly string[] SuccessfulAssistantKeywords = ["i put together", "here is another"];
     private static readonly Dictionary<string, string> StyleByOccasion = new(StringComparer.OrdinalIgnoreCase)
     {
         ["walk"] = "casual",
@@ -52,10 +54,16 @@ public class OutfitChatService : IOutfitChatService
         ["brunch"] = "casual",
         ["errands"] = "casual",
         ["weekend"] = "casual",
+        ["trip"] = "casual",
+        ["travel"] = "casual",
+        ["vacation"] = "casual",
+        ["holiday"] = "casual",
+        ["flight"] = "casual",
         ["work"] = "office",
         ["office"] = "office",
         ["meeting"] = "office",
         ["interview"] = "formal",
+        ["conference"] = "formal",
         ["theatre"] = "elegant",
         ["theater"] = "elegant",
         ["film"] = "elegant",
@@ -125,8 +133,8 @@ public class OutfitChatService : IOutfitChatService
         {
             return BuildFollowUpResponse(
                 ["occasion", "weather"],
-                "Tell me what the outfit is for and what weather I should dress for.",
-                ["Build me a rainy work outfit", "Plan a sunny weekend look", "Create an elegant dinner outfit"]);
+                "Tell me where you are going or what the plan is, and I will take it from there.",
+                ["What should I wear for a walk in the park in Bucharest?", "What should I wear for a trip to Milan this weekend?", "What should I wear for a conference in Cluj tomorrow?"]);
         }
 
         var intent = EnrichIntentFromConversation(messages, await _intentParser.ParseAsync(messages));
@@ -135,7 +143,7 @@ public class OutfitChatService : IOutfitChatService
             return new OutfitChatResponse
             {
                 Status = "out_of_scope",
-                AssistantMessage = "I can help only with outfit suggestions based on your wardrobe, palette, and weather."
+                AssistantMessage = "I can help with outfit ideas built from the pieces you have saved in Stylora."
             };
         }
 
@@ -232,8 +240,8 @@ public class OutfitChatService : IOutfitChatService
         {
             return BuildFollowUpResponse(
                 missingFields,
-                "Tell me the occasion or vibe and either the weather or the city I should check.",
-                ["Work outfit for a rainy day", "Casual sunny weekend look", "Elegant dinner outfit for Bucharest tomorrow"]);
+                "Tell me where you are going or what the plan is, and add a city if you want me to check the weather for you.",
+                ["What should I wear for a walk in the park in Bucharest?", "What should I wear for a trip to Milan this weekend?", "What should I wear for a conference in Cluj tomorrow?"]);
         }
 
         if (missingFields.Contains("occasion"))
@@ -281,15 +289,9 @@ public class OutfitChatService : IOutfitChatService
             return intent;
         }
 
+        var latestUser = userMessages[^1];
+        var previousAssistant = GetPreviousAssistantMessage(messages);
         var fullConversation = string.Join(' ', userMessages);
-        if (ScopeKeywords.Any(keyword => fullConversation.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
-        {
-            intent.IsInScope = true;
-            if (string.Equals(intent.Intent, "out_of_scope", StringComparison.OrdinalIgnoreCase))
-            {
-                intent.Intent = "generate_outfit";
-            }
-        }
 
         foreach (var userMessage in userMessages)
         {
@@ -306,6 +308,43 @@ public class OutfitChatService : IOutfitChatService
         }
 
         ApplyLatestReplyContext(messages, intent);
+
+        var hasLatestOutfitSignals = HasOutfitSignals(latestUser);
+        var expectsOccasionContext = !string.IsNullOrWhiteSpace(previousAssistant) && NeedsOccasionContext(previousAssistant);
+        var expectsWeatherContext = !string.IsNullOrWhiteSpace(previousAssistant) && NeedsWeatherContext(previousAssistant);
+        var latestProvidesOccasionContext = HasOccasionContext(latestUser);
+        var latestProvidesWeatherContext = HasWeatherContext(latestUser);
+        var latestProvidesLocationOrDateContext = HasLocationOrDateContext(latestUser);
+        var latestProvidesConstraintContext = HasConstraintContext(latestUser);
+        var hasPriorOutfitContext = HasPriorOutfitContext(messages, userMessages, intent);
+
+        var isValidFollowUpReply =
+            (expectsOccasionContext && latestProvidesOccasionContext)
+            || (expectsWeatherContext && (latestProvidesWeatherContext || latestProvidesLocationOrDateContext))
+            || (hasPriorOutfitContext && (latestProvidesOccasionContext || latestProvidesWeatherContext || latestProvidesLocationOrDateContext || latestProvidesConstraintContext));
+
+        var canContinueAsOutfitConversation =
+            hasLatestOutfitSignals
+            || isValidFollowUpReply
+            || (IsShuffleMessage(latestUser) && hasPriorOutfitContext);
+
+        if (!canContinueAsOutfitConversation)
+        {
+            intent.IsInScope = false;
+            intent.Intent = "out_of_scope";
+            return intent;
+        }
+
+        if (HasOutfitSignals(fullConversation) || hasPriorOutfitContext || isValidFollowUpReply)
+        {
+            intent.IsInScope = true;
+            if (string.Equals(intent.Intent, "out_of_scope", StringComparison.OrdinalIgnoreCase))
+            {
+                intent.Intent = "generate_outfit";
+            }
+        }
+
+        intent.DateContext ??= "today";
         return intent;
     }
 
@@ -339,11 +378,7 @@ public class OutfitChatService : IOutfitChatService
             return;
         }
 
-        var previousAssistant = messages
-            .Take(Math.Max(0, messages.Count - 1))
-            .LastOrDefault(message =>
-                string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(message.Content))?.Content.Trim().ToLowerInvariant();
+        var previousAssistant = GetPreviousAssistantMessage(messages);
 
         if (string.IsNullOrWhiteSpace(previousAssistant))
         {
@@ -387,6 +422,82 @@ public class OutfitChatService : IOutfitChatService
     private static bool IsShuffleMessage(string message)
     {
         return ShuffleKeywords.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool HasOutfitSignals(string message)
+    {
+        return ScopeKeywords.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            || HasOccasionContext(message)
+            || HasWeatherContext(message)
+            || HasConstraintContext(message);
+    }
+
+    private static bool HasOccasionContext(string message)
+    {
+        return AllowedStyles.Any(style => message.Contains(style, StringComparison.OrdinalIgnoreCase))
+            || StyleByOccasion.Keys.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool HasWeatherContext(string message)
+    {
+        return WeatherStatusKeywords.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            || ThermalKeywords.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            || System.Text.RegularExpressions.Regex.IsMatch(
+                message,
+                @"(-?\d{1,2}(?:\.\d+)?)\s*(?:°?\s*c|degrees?)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    }
+
+    private static bool HasLocationOrDateContext(string message)
+    {
+        return DateKeywords.Any(keyword => message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            || !string.IsNullOrWhiteSpace(ExtractLocationFromMessage(message));
+    }
+
+    private static bool HasConstraintContext(string message)
+    {
+        return message.Contains("warmer", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("cooler", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("more casual", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("less casual", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("more formal", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("less formal", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("layered", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("minimal", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("sportier", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasPriorOutfitContext(
+        IReadOnlyList<OutfitChatMessageDto> messages,
+        IReadOnlyList<string> userMessages,
+        OutfitIntentResult intent)
+    {
+        var earlierUserMessages = userMessages.Take(Math.Max(0, userMessages.Count - 1));
+        if (earlierUserMessages.Any(HasOutfitSignals))
+        {
+            return true;
+        }
+
+        if (messages.Any(message =>
+                string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+                && SuccessfulAssistantKeywords.Any(keyword => message.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase))))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(intent.OccasionText)
+            || !string.IsNullOrWhiteSpace(intent.StyleBucket)
+            || !string.IsNullOrWhiteSpace(intent.WeatherSummary)
+            || !string.IsNullOrWhiteSpace(intent.WeatherStatus);
+    }
+
+    private static string? GetPreviousAssistantMessage(IReadOnlyList<OutfitChatMessageDto> messages)
+    {
+        return messages
+            .Take(Math.Max(0, messages.Count - 1))
+            .LastOrDefault(message =>
+                string.Equals(message.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(message.Content))?.Content.Trim().ToLowerInvariant();
     }
 
     private static void FillOccasionAndStyle(string message, OutfitIntentResult intent)
@@ -574,60 +685,62 @@ public class OutfitChatService : IOutfitChatService
     private static string? ExtractLocationAfterPreposition(string message)
     {
         return ExtractLocationAfterKeyword(message, "in")
+            ?? ExtractLocationAfterKeyword(message, "to")
             ?? ExtractLocationAfterKeyword(message, "for");
     }
 
     private static string? ExtractLocationAfterKeyword(string message, string keyword)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(
+        var matches = System.Text.RegularExpressions.Regex.Matches(
             message,
-            $@"\b{keyword}\b\s+(.+)",
+            $@"\b{keyword}\b\s+(.+?)(?=(?:\b(?:in|to|for)\b\s+)|$)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-        if (!match.Success)
+        for (var i = matches.Count - 1; i >= 0; i--)
         {
-            return null;
-        }
-
-        var tail = match.Groups[1].Value.Trim();
-        if (string.IsNullOrWhiteSpace(tail))
-        {
-            return null;
-        }
-
-        var words = tail
-            .Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToList();
-
-        var candidateWords = new List<string>();
-        foreach (var rawWord in words)
-        {
-            var cleanedWord = rawWord.Trim(',', '.', '!', '?', ';', ':');
-            if (string.IsNullOrWhiteSpace(cleanedWord))
+            var tail = matches[i].Groups[1].Value.Trim();
+            if (string.IsNullOrWhiteSpace(tail))
             {
                 continue;
             }
 
-            if (LocationStopWords.Contains(cleanedWord.ToLowerInvariant()))
+            var words = tail
+                .Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+            var candidateWords = new List<string>();
+            foreach (var rawWord in words)
             {
-                break;
+                var cleanedWord = rawWord.Trim(',', '.', '!', '?', ';', ':');
+                if (string.IsNullOrWhiteSpace(cleanedWord))
+                {
+                    continue;
+                }
+
+                if (LocationStopWords.Contains(cleanedWord.ToLowerInvariant()))
+                {
+                    break;
+                }
+
+                if (!System.Text.RegularExpressions.Regex.IsMatch(cleanedWord, @"^[A-Za-z-]+$", System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+                {
+                    break;
+                }
+
+                candidateWords.Add(cleanedWord);
+                if (candidateWords.Count == 4)
+                {
+                    break;
+                }
             }
 
-            if (!System.Text.RegularExpressions.Regex.IsMatch(cleanedWord, @"^[A-Za-z-]+$", System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            if (candidateWords.Count > 0)
             {
-                break;
-            }
-
-            candidateWords.Add(cleanedWord);
-            if (candidateWords.Count == 4)
-            {
-                break;
+                return string.Join(' ', candidateWords);
             }
         }
 
-        return candidateWords.Count == 0
-            ? null
-            : string.Join(' ', candidateWords);
+        return null;
     }
 
     private static IEnumerable<string> SplitMessageSegments(string message)
@@ -1268,7 +1381,7 @@ public class OutfitChatService : IOutfitChatService
             .ToList();
 
         var lead = pieceLabels.Count > 0 ? string.Join(", ", pieceLabels.Take(3)) : "a balanced mix";
-        return $"Built as a {style} outfit for {occasion} in {weatherSummary} weather, anchored by {lead}.";
+        return $"A {style} outfit for {occasion}, built around {lead} and balanced for {weatherSummary} weather.";
     }
 
     private static OutfitBoardItemDto MapBoardItem(WardrobeItemDto item)

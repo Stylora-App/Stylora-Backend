@@ -33,6 +33,39 @@ public class OutfitChatServiceTests
     }
 
     [Fact]
+    public async Task ProcessAsync_ReturnsOutOfScope_WhenFollowUpReplyIsUnrelated()
+    {
+        var wardrobe = new FakeWardrobeService(
+        [
+            new WardrobeItemDto { Id = "top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "top.png", Color = "green", ValidationStatus = "pass" },
+            new WardrobeItemDto { Id = "bottom", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "bottom.png", Color = "blue", ValidationStatus = "pass" },
+            new WardrobeItemDto { Id = "shoes", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
+        ]);
+
+        var service = new OutfitChatService(
+            wardrobe,
+            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
+            new FakeIntentParser(new OutfitIntentResult
+            {
+                Intent = "generate_outfit",
+                IsInScope = true
+            }),
+            new FakeWeatherService(null));
+
+        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
+        {
+            Messages =
+            [
+                new OutfitChatMessageDto { Role = "assistant", Content = "Tell me where you are headed, and I will put together a look from your saved wardrobe." },
+                new OutfitChatMessageDto { Role = "user", Content = "pancakes" }
+            ]
+        });
+
+        Assert.Equal("out_of_scope", response.Status);
+        Assert.Null(response.Outfit);
+    }
+
+    [Fact]
     public async Task ProcessAsync_AsksForWeather_WhenOccasionExistsButWeatherDoesNot()
     {
         var service = CreateService(
@@ -273,6 +306,40 @@ public class OutfitChatServiceTests
     }
 
     [Fact]
+    public async Task ProcessAsync_UsesTripPrompt_FromDirectRequest()
+    {
+        var wardrobe = new FakeWardrobeService(
+        [
+            new WardrobeItemDto { Id = "top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "top.png", Color = "green", ValidationStatus = "pass" },
+            new WardrobeItemDto { Id = "bottom", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "bottom.png", Color = "blue", ValidationStatus = "pass" },
+            new WardrobeItemDto { Id = "shoes", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
+        ]);
+
+        var service = new OutfitChatService(
+            wardrobe,
+            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
+            new FakeIntentParser(new OutfitIntentResult
+            {
+                Intent = "out_of_scope",
+                IsInScope = false
+            }),
+            new MilanWeatherService());
+
+        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
+        {
+            Messages =
+            [
+                new OutfitChatMessageDto { Role = "user", Content = "What should I wear for a trip to Milan this weekend?" }
+            ]
+        });
+
+        Assert.Equal("success", response.Status);
+        Assert.NotNull(response.Outfit);
+        Assert.Equal("casual", response.Outfit!.Style, ignoreCase: true);
+        Assert.Contains("sunny", response.Outfit.WeatherSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ProcessAsync_UsesNaturalSentenceLocationAndTonight_FromDirectRequest()
     {
         var wardrobe = new FakeWardrobeService(
@@ -443,6 +510,27 @@ public class OutfitChatServiceTests
                     TemperatureC = 17,
                     ThermalBand = "cool",
                     Summary = "cloudy, cool, 17C"
+                });
+            }
+
+            return Task.FromResult<ResolvedWeatherContext?>(null);
+        }
+    }
+
+    private sealed class MilanWeatherService : IWeatherService
+    {
+        public Task<ResolvedWeatherContext?> ResolveAsync(OutfitIntentResult intent, CancellationToken cancellationToken = default)
+        {
+            if (string.Equals(intent.Location, "Milan", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult<ResolvedWeatherContext?>(new ResolvedWeatherContext
+                {
+                    Source = "test",
+                    LocationLabel = "Milan",
+                    Status = "sunny",
+                    TemperatureC = 24,
+                    ThermalBand = "warm",
+                    Summary = "sunny, warm, 24C"
                 });
             }
 

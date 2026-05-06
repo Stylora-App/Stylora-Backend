@@ -80,7 +80,7 @@ public sealed class GemmaIntentWorkerService : IOutfitIntentParser, IAsyncDispos
                 throw new InvalidOperationException("Gemma intent worker returned no parse result.");
             }
 
-            return workerResponse.Result;
+            return MergeWithHeuristics(workerResponse.Result, messages);
         }
         catch (Exception ex) when (
             ex is HttpRequestException
@@ -267,6 +267,43 @@ public sealed class GemmaIntentWorkerService : IOutfitIntentParser, IAsyncDispos
     {
         var parser = new HeuristicOutfitIntentParser();
         return parser.Parse(messages);
+    }
+
+    private static OutfitIntentResult MergeWithHeuristics(
+        OutfitIntentResult parsed,
+        IReadOnlyList<OutfitChatMessageDto> messages)
+    {
+        var heuristic = HeuristicParse(messages);
+
+        parsed.IsInScope = parsed.IsInScope || heuristic.IsInScope;
+        if (string.Equals(parsed.Intent, "out_of_scope", StringComparison.OrdinalIgnoreCase) && heuristic.IsInScope)
+        {
+            parsed.Intent = heuristic.Intent;
+        }
+
+        parsed.OccasionText = FirstNonEmpty(parsed.OccasionText, heuristic.OccasionText);
+        parsed.StyleBucket = FirstNonEmpty(parsed.StyleBucket, heuristic.StyleBucket);
+        parsed.Location = FirstNonEmpty(parsed.Location, heuristic.Location);
+        parsed.DateContext = FirstNonEmpty(parsed.DateContext, heuristic.DateContext) ?? "today";
+        parsed.WeatherSummary = FirstNonEmpty(parsed.WeatherSummary, heuristic.WeatherSummary);
+        parsed.WeatherStatus = FirstNonEmpty(parsed.WeatherStatus, heuristic.WeatherStatus);
+        parsed.TemperatureC ??= heuristic.TemperatureC;
+
+        foreach (var constraint in heuristic.Constraints)
+        {
+            if (!parsed.Constraints.Contains(constraint, StringComparer.OrdinalIgnoreCase))
+            {
+                parsed.Constraints.Add(constraint);
+            }
+        }
+
+        parsed.ShuffleCount = Math.Max(parsed.ShuffleCount, heuristic.ShuffleCount);
+        return parsed;
+    }
+
+    private static string? FirstNonEmpty(string? preferred, string? fallback)
+    {
+        return !string.IsNullOrWhiteSpace(preferred) ? preferred : fallback;
     }
 
     private string ResolvePath(string path)

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
+using Stylora.Application.Security;
 
 namespace Stylora.API.Controllers;
 
@@ -35,12 +36,12 @@ public class AuthController : ControllerBase
                 });
             }
 
-            if (request.Password.Length < 6)
+            if (!PasswordPolicy.IsValid(request.Password))
             {
                 return BadRequest(new AuthResponse
                 {
                     Success = false,
-                    Message = "Password must be at least 6 characters long."
+                    Message = PasswordPolicy.ValidationMessage
                 });
             }
 
@@ -164,31 +165,42 @@ public class AuthController : ControllerBase
             });
         }
 
-        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 6)
+        if (!PasswordPolicy.IsValid(request.NewPassword))
         {
             return BadRequest(new AuthResponse
             {
                 Success = false,
-                Message = "New password must be at least 6 characters long."
+                Message = PasswordPolicy.ValidationMessage
             });
         }
 
-        var result = await _authService.ChangePasswordAsync(userId, request.CurrentPassword, request.NewPassword);
+        try
+        {
+            var result = await _authService.ChangePasswordAsync(userId, request.CurrentPassword, request.NewPassword);
 
-        if (!result)
+            if (!result)
+            {
+                return BadRequest(new AuthResponse
+                {
+                    Success = false,
+                    Message = "Current password is incorrect."
+                });
+            }
+
+            return Ok(new AuthResponse
+            {
+                Success = true,
+                Message = "Password changed successfully."
+            });
+        }
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new AuthResponse
             {
                 Success = false,
-                Message = "Current password is incorrect."
+                Message = ex.Message
             });
         }
-
-        return Ok(new AuthResponse
-        {
-            Success = true,
-            Message = "Password changed successfully."
-        });
     }
 
     private async Task SignInUserAsync(Guid userId, string email, bool rememberMe)

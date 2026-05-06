@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Stylora.Application.Interfaces;
+using Stylora.Application.Security;
 using Stylora.Domain.Entities;
 
 namespace Stylora.Infrastructure.Services;
@@ -31,6 +32,9 @@ public class AuthService : IAuthService
         if (await _userRepository.EmailExistsAsync(email))
             throw new InvalidOperationException("Email is already registered.");
 
+        if (!PasswordPolicy.IsValid(password))
+            throw new InvalidOperationException(PasswordPolicy.ValidationMessage);
+
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -57,6 +61,9 @@ public class AuthService : IAuthService
 
     public async Task<bool> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
     {
+        if (!PasswordPolicy.IsValid(newPassword))
+            throw new InvalidOperationException(PasswordPolicy.ValidationMessage);
+
         var user = await _userRepository.GetByIdAsync(userId);
         if (user == null)
             return false;
