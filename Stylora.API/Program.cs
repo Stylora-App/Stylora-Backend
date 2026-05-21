@@ -90,8 +90,14 @@ var rapidApiKey = Environment.GetEnvironmentVariable("RAPIDAPI_KEY") ??
                   throw new InvalidOperationException(
                       "RapidAPI key not found. Set the RAPIDAPI_KEY environment variable or add it to .env file.");
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
-                       throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+var connectionString = Environment.GetEnvironmentVariable("DATABASE_CONNECTION_STRING") ??
+                       builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "Database connection string not found. Set DATABASE_CONNECTION_STRING in your environment or root .env file.");
+}
 
 var clothingValidationSettings = new Stylora.Application.Models.ClothingValidationSettings();
 builder.Configuration.GetSection("ClothingValidation").Bind(clothingValidationSettings);
