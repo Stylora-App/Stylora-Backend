@@ -35,7 +35,15 @@ public class AnalysisService : IAnalysisService
             SubSeason = result.SubSeason,
             Description = result.Description,
             RecommendedColors = recommendedPalette,
-            BestMetals = result.BestMetals
+            BestMetals = result.BestMetals,
+            HairColor = result.HairColor,
+            HairDetail = result.HairDetail,
+            EyeColor = result.EyeColor,
+            EyeDetail = result.EyeDetail,
+            SkinTone = result.SkinTone,
+            SkinDetail = result.SkinDetail,
+            Undertone = result.Undertone,
+            Contrast = result.Contrast
         };
     }
 

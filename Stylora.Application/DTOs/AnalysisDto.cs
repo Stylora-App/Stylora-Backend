@@ -13,4 +13,14 @@ public class SeasonAnalysisResponse
     public string Description { get; set; } = string.Empty;
     public List<string> RecommendedColors { get; set; } = [];
     public string BestMetals { get; set; } = string.Empty;
+
+    // Mind-map annotation data (only populated on fresh Gemini analysis)
+    public string? HairColor { get; set; }
+    public string? HairDetail { get; set; }
+    public string? EyeColor { get; set; }
+    public string? EyeDetail { get; set; }
+    public string? SkinTone { get; set; }
+    public string? SkinDetail { get; set; }
+    public string? Undertone { get; set; }
+    public string? Contrast { get; set; }
 }

@@ -68,6 +68,9 @@ public class UserProfileDto
     public string? Season { get; set; }
     public string? SubSeason { get; set; }
     public List<string> Palette { get; set; } = [];
+    public string? BestMetals { get; set; }
+    public string? Undertone { get; set; }
+    public string? Contrast { get; set; }
 }
 
 public class UpdateProfileRequest

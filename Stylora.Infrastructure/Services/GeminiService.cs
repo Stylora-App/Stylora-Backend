@@ -58,16 +58,24 @@ public class GeminiService : IGeminiService
 
     public async Task<SeasonAnalysisResult> AnalyzeSeasonAsync(string imageBase64)
     {
-        var prompt = @"Analyze this person's skin undertone, eye color, and hair color strictly according to Armochromia theory. 
+        var prompt = @"Analyze this person's skin undertone, eye color, and hair color strictly according to Armochromia theory.
         Determine their seasonal color palette (Spring, Summer, Autumn, Winter) and specific sub-season (e.g., Deep Autumn, Light Summer).
         Provide a list of 8-12 recommended colors as hex codes (e.g., #FF5733) and a brief explanation.
-        Return JSON with the following structure:
+        Return ONLY a JSON object with the following structure and no markdown:
         {
             ""season"": ""string"",
             ""subSeason"": ""string"",
-            ""description"": ""string"",
-            ""recommendedColors"": [""#hexcode1"", ""#hexcode2"", ""#hexcode3"", ...],
-            ""bestMetals"": ""string""
+            ""description"": ""string (2-3 sentences about the season and what suits them)"",
+            ""recommendedColors"": [""#hexcode1"", ""#hexcode2"", ...],
+            ""bestMetals"": ""string (e.g. Gold, Rose gold, Silver)"",
+            ""hairColor"": ""string (short descriptive name, e.g. Honey-warm brown)"",
+            ""hairDetail"": ""string (e.g. Medium depth · golden reflects)"",
+            ""eyeColor"": ""string (short descriptive name, e.g. Soft hazel)"",
+            ""eyeDetail"": ""string (e.g. Medium contrast · warm flecks)"",
+            ""skinTone"": ""string (short undertone description, e.g. Warm undertone)"",
+            ""skinDetail"": ""string (e.g. Peach base · neutral-warm overall)"",
+            ""undertone"": ""string (one word: Warm or Cool or Neutral)"",
+            ""contrast"": ""string (e.g. Low-medium or High or Medium)""
         }";
 
         var text = await GenerateContentAsync(prompt, imageBase64);
@@ -78,13 +86,20 @@ public class GeminiService : IGeminiService
             PropertyNameCaseInsensitive = true
         });
 
-        // Convert to domain entity with hex codes
         var result = new SeasonAnalysisResult
         {
             Season = rawResult?.Season ?? "",
             SubSeason = rawResult?.SubSeason ?? "",
             Description = rawResult?.Description ?? "",
             BestMetals = rawResult?.BestMetals ?? "",
+            HairColor = rawResult?.HairColor,
+            HairDetail = rawResult?.HairDetail,
+            EyeColor = rawResult?.EyeColor,
+            EyeDetail = rawResult?.EyeDetail,
+            SkinTone = rawResult?.SkinTone,
+            SkinDetail = rawResult?.SkinDetail,
+            Undertone = rawResult?.Undertone,
+            Contrast = rawResult?.Contrast,
             RecommendedColors = rawResult?.RecommendedColors?.Select(hexCode => new RecommendedColor
             {
                 Color = new Color { Name = hexCode, HexCode = hexCode }
@@ -358,4 +373,12 @@ internal class SeasonAnalysisRaw
     public string? Description { get; set; }
     public List<string>? RecommendedColors { get; set; }
     public string? BestMetals { get; set; }
+    public string? HairColor { get; set; }
+    public string? HairDetail { get; set; }
+    public string? EyeColor { get; set; }
+    public string? EyeDetail { get; set; }
+    public string? SkinTone { get; set; }
+    public string? SkinDetail { get; set; }
+    public string? Undertone { get; set; }
+    public string? Contrast { get; set; }
 }

@@ -69,7 +69,26 @@ public class UserService : IUserService
             Style = user.Style?.ToString().ToLowerInvariant(),
             Season = analysis?.Season,
             SubSeason = analysis?.SubSeason,
-            Palette = palette
+            Palette = palette,
+            BestMetals = analysis?.BestMetals,
+            Undertone = DeriveUndertone(analysis?.Season),
+            Contrast = DeriveContrast(analysis?.SubSeason)
         };
+    }
+
+    private static string? DeriveUndertone(string? season) => season?.ToLowerInvariant() switch
+    {
+        "spring" or "autumn" => "Warm",
+        "summer" or "winter" => "Cool",
+        _ => null
+    };
+
+    private static string? DeriveContrast(string? subSeason)
+    {
+        if (string.IsNullOrWhiteSpace(subSeason)) return null;
+        var lower = subSeason.ToLowerInvariant();
+        if (lower.Contains("soft") || lower.Contains("light")) return "Low–medium";
+        if (lower.Contains("deep") || lower.Contains("dark") || lower.Contains("true") || lower.Contains("bright")) return "High";
+        return "Medium";
     }
 }
