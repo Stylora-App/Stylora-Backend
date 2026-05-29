@@ -2,8 +2,7 @@ namespace Stylora.Application.Models;
 
 public sealed class OutfitChatModelSettings
 {
-    public string PythonExecutablePath { get; set; } = "../../armochromia_classifier/.venv/Scripts/python.exe";
-    public string WorkerScriptPath { get; set; } = "../../ml/outfit-chat/gemma_intent_worker.py";
+    public string WorkerBaseUrl { get; set; } = "http://ai-gemma:8002/";
     public string ModelId { get; set; } = "google/gemma-4-26B-A4B-it";
     public int WorkerStartupTimeoutSeconds { get; set; } = 900;
     public bool WarmupWorkerOnStartup { get; set; } = false;
