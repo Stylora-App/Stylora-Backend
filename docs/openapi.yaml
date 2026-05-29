@@ -1,0 +1,607 @@
+openapi: 3.0.3
+info:
+  title: Stylora Backend API
+  version: "1.0"
+  description: >
+    REST API for the Stylora fashion app. All endpoints except `/api/auth/register`,
+    `/api/auth/login` require an authenticated session cookie.
+
+servers:
+  - url: http://localhost:8080
+    description: Local / Docker
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: .AspNetCore.Cookies
+
+  schemas:
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:       { type: string, format: email }
+        password:    { type: string, minLength: 8 }
+        firstName:   { type: string, nullable: true }
+        lastName:    { type: string, nullable: true }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:      { type: string, format: email }
+        password:   { type: string }
+        rememberMe: { type: boolean, default: false }
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string }
+        newPassword:     { type: string, minLength: 8 }
+
+    UserDto:
+      type: object
+      properties:
+        id:             { type: string, format: uuid }
+        email:          { type: string, format: email }
+        firstName:      { type: string, nullable: true }
+        lastName:       { type: string, nullable: true }
+        profilePicture: { type: string, nullable: true }
+        style:          { type: string, nullable: true }
+        createdAt:      { type: string, format: date-time }
+
+    AuthResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string, nullable: true }
+        user:
+          $ref: '#/components/schemas/UserDto'
+          nullable: true
+
+    # ── User / Profile ────────────────────────────────────────────────────────
+    UserProfileDto:
+      type: object
+      properties:
+        firstName:      { type: string, nullable: true }
+        lastName:       { type: string, nullable: true }
+        profilePicture: { type: string, nullable: true }
+        style:          { type: string, nullable: true }
+        season:         { type: string, nullable: true }
+        subSeason:      { type: string, nullable: true }
+        palette:        { type: array, items: { type: string } }
+        bestMetals:     { type: string, nullable: true }
+        undertone:      { type: string, nullable: true }
+        contrast:       { type: string, nullable: true }
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        firstName:      { type: string, nullable: true }
+        lastName:       { type: string, nullable: true }
+        profilePicture: { type: string, nullable: true }
+        style:          { type: string, nullable: true }
+
+    # ── Analysis ─────────────────────────────────────────────────────────────
+    SeasonAnalysisRequest:
+      type: object
+      required: [imageBase64]
+      properties:
+        imageBase64:
+          type: string
+          description: Base64-encoded face photo (data URI or raw base64).
+
+    SeasonAnalysisResponse:
+      type: object
+      properties:
+        id:                { type: string, nullable: true }
+        season:            { type: string, example: "True Autumn" }
+        subSeason:         { type: string, example: "Deep Autumn" }
+        description:       { type: string }
+        recommendedColors: { type: array, items: { type: string } }
+        bestMetals:        { type: string }
+        hairColor:         { type: string, nullable: true }
+        hairDetail:        { type: string, nullable: true }
+        eyeColor:          { type: string, nullable: true }
+        eyeDetail:         { type: string, nullable: true }
+        skinTone:          { type: string, nullable: true }
+        skinDetail:        { type: string, nullable: true }
+        undertone:         { type: string, nullable: true }
+        contrast:          { type: string, nullable: true }
+
+    # ── Wardrobe ──────────────────────────────────────────────────────────────
+    WardrobeItemDto:
+      type: object
+      properties:
+        id:                   { type: string }
+        image:                { type: string, description: Base64 image }
+        category:             { type: string }
+        articleTypeLabel:     { type: string, nullable: true }
+        audienceTag:          { type: string, nullable: true }
+        style:                { type: string, nullable: true }
+        color:                { type: string, nullable: true }
+        outfitRole:           { type: string, nullable: true }
+        validationStatus:     { type: string, nullable: true }
+        validationConfidence: { type: number, format: double, nullable: true }
+        validationMessage:    { type: string, nullable: true }
+        validatedAt:          { type: string, format: date-time, nullable: true }
+
+    CreateWardrobeItemRequest:
+      type: object
+      required: [image]
+      properties:
+        image:                   { type: string, description: Base64 image }
+        category:                { type: string, nullable: true }
+        articleTypeLabel:        { type: string, nullable: true }
+        audienceTag:             { type: string, nullable: true }
+        style:                   { type: string, nullable: true }
+        color:                   { type: string, nullable: true }
+        overrideValidationWarning: { type: boolean, default: false }
+
+    AnalyzeWardrobeItemRequest:
+      type: object
+      required: [image]
+      properties:
+        image: { type: string, description: Base64 image }
+
+    DeleteWardrobeItemsRequest:
+      type: object
+      required: [itemIds]
+      properties:
+        itemIds: { type: array, items: { type: string }, minItems: 1 }
+
+    WardrobeValidationDto:
+      type: object
+      properties:
+        status:              { type: string, enum: [ok, warning, rejected] }
+        isLikelyClothing:    { type: boolean }
+        confidence:          { type: number, format: double }
+        message:             { type: string }
+        canOverride:         { type: boolean }
+        nearestLabels:       { type: array, items: { type: string } }
+        suggestedCategory:   { type: string, nullable: true }
+        suggestedArticleType:{ type: string, nullable: true }
+        suggestedStyle:      { type: string, nullable: true }
+        suggestedColor:      { type: string, nullable: true }
+        suggestedGender:     { type: string, nullable: true }
+        suggestedOutfitRole: { type: string, nullable: true }
+
+    CreateWardrobeItemResponse:
+      type: object
+      properties:
+        item:
+          $ref: '#/components/schemas/WardrobeItemDto'
+          nullable: true
+        validation:
+          $ref: '#/components/schemas/WardrobeValidationDto'
+          nullable: true
+
+    # ── Chat ─────────────────────────────────────────────────────────────────
+    OutfitChatMessageDto:
+      type: object
+      required: [role, content]
+      properties:
+        role:    { type: string, enum: [user, assistant] }
+        content: { type: string }
+
+    OutfitChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/OutfitChatMessageDto' }
+
+    OutfitBoardItemDto:
+      type: object
+      properties:
+        id:               { type: string }
+        image:            { type: string }
+        category:         { type: string }
+        label:            { type: string }
+        articleTypeLabel: { type: string, nullable: true }
+        color:            { type: string, nullable: true }
+
+    OutfitBoardDto:
+      type: object
+      properties:
+        occasion:       { type: string }
+        style:          { type: string }
+        weatherSummary: { type: string }
+        gender:         { type: string, example: unisex }
+        summary:        { type: string }
+        palette:        { type: array, items: { type: string } }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OutfitBoardItemDto' }
+
+    OutfitChatResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [follow_up, outfit_ready, out_of_scope]
+        assistantMessage: { type: string }
+        missingFields:    { type: array, items: { type: string } }
+        missingRoles:     { type: array, items: { type: string } }
+        suggestedReplies: { type: array, items: { type: string } }
+        hasMoreOutfits:   { type: boolean }
+        outfit:
+          $ref: '#/components/schemas/OutfitBoardDto'
+          nullable: true
+
+    # ── Explore ───────────────────────────────────────────────────────────────
+    ShoppingProductDto:
+      type: object
+      properties:
+        id:               { type: integer }
+        name:             { type: string }
+        brandName:        { type: string }
+        price:            { type: string }
+        imageUrl:         { type: string }
+        url:              { type: string }
+        colour:           { type: string, nullable: true }
+        category:         { type: string, nullable: true }
+        articleTypeLabel: { type: string, nullable: true }
+        audienceTag:      { type: string, nullable: true }
+        colorFamily:      { type: string, nullable: true }
+        outfitRole:       { type: string, nullable: true }
+        paletteMatch:     { type: boolean }
+
+    ExploreResultDto:
+      type: object
+      properties:
+        products:
+          type: array
+          items: { $ref: '#/components/schemas/ShoppingProductDto' }
+        hasMore:  { type: boolean }
+        page:     { type: integer }
+        pageSize: { type: integer }
+
+    # ── Try-On ────────────────────────────────────────────────────────────────
+    TryOnRequest:
+      type: object
+      required: [personImageBase64]
+      properties:
+        personImageBase64:   { type: string, description: Base64-encoded person photo }
+        clothingImageBase64: { type: string, nullable: true, description: Base64-encoded clothing photo }
+        clothingImageUrl:    { type: string, nullable: true, description: Remote URL of clothing image }
+
+    TryOnResponse:
+      type: object
+      properties:
+        generatedImage: { type: string, description: Base64-encoded composite image }
+
+    LastTryOnPhotoDto:
+      type: object
+      properties:
+        personImageBase64: { type: string, nullable: true }
+
+security:
+  - cookieAuth: []
+
+paths:
+  # ── Auth ──────────────────────────────────────────────────────────────────
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        "200":
+          description: Registration successful. Session cookie is set.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        "400":
+          description: Validation error (missing fields, weak password, email taken)
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        "200":
+          description: Login successful. Session cookie is set.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        "400": { description: Missing fields }
+        "401": { description: Invalid credentials }
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out and clear the session cookie
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the currently authenticated user
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        "401": { description: Not authenticated }
+        "404": { description: User not found }
+
+  /api/auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change the authenticated user's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        "400": { description: Incorrect current password or weak new password }
+        "401": { description: Not authenticated }
+
+  # ── Users ─────────────────────────────────────────────────────────────────
+  /api/users/profile:
+    get:
+      tags: [Users]
+      summary: Get the authenticated user's profile
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfileDto' }
+    put:
+      tags: [Users]
+      summary: Update the authenticated user's profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfileDto' }
+
+  # ── Analysis ──────────────────────────────────────────────────────────────
+  /api/analysis/season:
+    post:
+      tags: [Analysis]
+      summary: Analyse a face photo to determine colour season (calls Gemini)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeasonAnalysisRequest' }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeasonAnalysisResponse' }
+        "502": { description: Gemini API error }
+        "500": { description: Unexpected failure }
+
+  /api/analysis/latest:
+    get:
+      tags: [Analysis]
+      summary: Get the user's most recent season analysis (null if none)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeasonAnalysisResponse'
+                nullable: true
+
+  /api/analysis/save-profile:
+    post:
+      tags: [Analysis]
+      summary: Save a season analysis result to the user's profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeasonAnalysisResponse' }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfileDto' }
+
+  # ── Wardrobe ──────────────────────────────────────────────────────────────
+  /api/wardrobe/items:
+    get:
+      tags: [Wardrobe]
+      summary: List all wardrobe items for the authenticated user
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WardrobeItemDto' }
+    post:
+      tags: [Wardrobe]
+      summary: Add a new wardrobe item (runs CLIP validation first)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWardrobeItemRequest' }
+      responses:
+        "201":
+          description: Item created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateWardrobeItemResponse' }
+        "409":
+          description: Validation warning — item rejected. Set `overrideValidationWarning=true` to force-add.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WardrobeValidationDto' }
+        "400": { description: Invalid image or missing fields }
+
+  /api/wardrobe/items/analyze:
+    post:
+      tags: [Wardrobe]
+      summary: Validate a clothing image without saving it (calls CLIP worker)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnalyzeWardrobeItemRequest' }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WardrobeValidationDto' }
+        "400": { description: Invalid image }
+
+  /api/wardrobe/items/{id}:
+    delete:
+      tags: [Wardrobe]
+      summary: Delete a single wardrobe item
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Item not found or not owned by user }
+
+  /api/wardrobe/items/delete-batch:
+    post:
+      tags: [Wardrobe]
+      summary: Delete multiple wardrobe items in one request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteWardrobeItemsRequest' }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deletedCount: { type: integer }
+        "400": { description: No IDs provided }
+
+  # ── Chat ──────────────────────────────────────────────────────────────────
+  /api/chat/outfit:
+    post:
+      tags: [Chat]
+      summary: >
+        Send the full conversation history and receive an outfit suggestion or
+        follow-up question. Internally calls the Gemma intent worker then
+        assembles an outfit from the user's wardrobe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OutfitChatRequest' }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OutfitChatResponse' }
+
+  # ── Explore ───────────────────────────────────────────────────────────────
+  /api/explore:
+    get:
+      tags: [Explore]
+      summary: Search ASOS products filtered by the user's colour palette
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+          description: Free-text search query (optional)
+        - in: query
+          name: category
+          schema:
+            type: string
+            enum: [all, tops, bottoms, dresses, shoes, accessories, outerwear]
+            default: all
+        - in: query
+          name: gender
+          schema: { type: string, enum: [women, men] }
+        - in: query
+          name: season
+          schema: { type: string }
+          description: e.g. "True Autumn"
+        - in: query
+          name: subSeason
+          schema: { type: string }
+          description: e.g. "Deep Autumn"
+        - in: query
+          name: palette
+          schema: { type: string }
+          description: Comma-separated hex codes, e.g. "#FF5733,#C19A6B"
+        - in: query
+          name: page
+          schema: { type: integer, default: 1, minimum: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, default: 20, minimum: 1, maximum: 48 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExploreResultDto' }
+        "502": { description: ASOS API error }
+
+  # ── Try-On ────────────────────────────────────────────────────────────────
+  /api/tryon/generate:
+    post:
+      tags: [TryOn]
+      summary: Generate a virtual try-on image using Gemini
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TryOnRequest' }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TryOnResponse' }
+        "400": { description: Validation error }
+        "401": { description: Not authenticated }
+
+  /api/tryon/last-photo:
+    get:
+      tags: [TryOn]
+      summary: Get the last person photo used by the authenticated user
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LastTryOnPhotoDto' }
+        "401": { description: Not authenticated }
+        "404": { description: No photo saved yet }
