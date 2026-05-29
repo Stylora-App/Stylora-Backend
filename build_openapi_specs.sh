@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Downloads the AI worker OpenAPI specs from GitHub and generates C# clients
-# using NSwag CLI. Also validates the backend spec.
+# Bundles the backend OpenAPI spec, downloads the AI worker specs from GitHub,
+# and generates C# clients using NSwag CLI.
 #
 # Requirements:
 #   - .NET SDK
@@ -8,7 +8,7 @@
 #   - python3 + pyyaml  (pip install pyyaml)
 #
 # Usage:
-#   ./build_openapi_specs.sh              # download specs from GitHub main branch
+#   ./build_openapi_specs.sh              # download AI specs from GitHub main branch
 #   SPECS_REF=my-branch ./build_openapi_specs.sh  # use a different branch/commit
 set -euo pipefail
 
@@ -55,6 +55,72 @@ except yaml.YAMLError as e:
 "
 }
 
+# Bundle openapi.entry.yaml + endpoints/*.yaml into a single openapi.yaml.
+# Resolves path-item $refs and rewrites back-references to components.
+bundle_backend_spec() {
+  local entry="$1"
+  local out="$2"
+  python3 - "$entry" "$out" <<'PYEOF'
+import sys, copy, yaml
+from pathlib import Path
+
+entry_path = Path(sys.argv[1]).resolve()
+out_path   = Path(sys.argv[2]).resolve()
+docs_dir   = entry_path.parent
+
+doc = yaml.safe_load(entry_path.read_text())
+
+def resolve_ref(ref: str, base_dir: Path):
+    """Return the object pointed to by a $ref string (file#/json-pointer)."""
+    if '#' in ref:
+        file_part, fragment = ref.split('#', 1)
+    else:
+        file_part, fragment = ref, ''
+
+    if file_part:
+        target_file = (base_dir / file_part).resolve()
+        target_doc  = yaml.safe_load(target_file.read_text())
+        target_dir  = target_file.parent
+    else:
+        target_doc  = doc
+        target_dir  = base_dir
+
+    obj = target_doc
+    for key in filter(None, fragment.lstrip('/').split('/')):
+        obj = obj[key]
+
+    return copy.deepcopy(obj), target_dir
+
+def rewrite_refs(obj, endpoint_dir: Path):
+    """Replace '../openapi.entry.yaml#/...' back-refs with '#/...' in-place."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == '$ref' and isinstance(v, str):
+                # back-reference to the entry/main file  → make it local
+                for alias in ('openapi.entry.yaml', 'openapi.yaml'):
+                    prefix = f'../{alias}#'
+                    if v.startswith(prefix):
+                        obj[k] = '#' + v[len(prefix):]
+                        break
+            else:
+                rewrite_refs(v, endpoint_dir)
+    elif isinstance(obj, list):
+        for item in obj:
+            rewrite_refs(item, endpoint_dir)
+
+# Inline every path-item $ref
+for path_key, path_item in list(doc.get('paths', {}).items()):
+    if isinstance(path_item, dict) and '$ref' in path_item:
+        ref       = path_item['$ref']
+        resolved, ep_dir = resolve_ref(ref, docs_dir)
+        rewrite_refs(resolved, ep_dir)
+        doc['paths'][path_key] = resolved
+
+out_path.write_text(yaml.dump(doc, allow_unicode=True, sort_keys=False, width=120))
+print(f"  Bundled {entry_path.name} → {out_path.name}")
+PYEOF
+}
+
 ensure_nswag() {
   if ! dotnet tool list --global | grep -qi "nswag.consoledotnet"; then
     echo "Installing NSwag CLI..."
@@ -62,7 +128,12 @@ ensure_nswag() {
   fi
 }
 
-# ── 1. Validate backend spec ──────────────────────────────────────────────────
+check_deps
+
+# ── 1. Bundle backend spec ────────────────────────────────────────────────────
+
+echo "==> Bundling backend spec..."
+bundle_backend_spec "$DOCS_DIR/openapi.entry.yaml" "$DOCS_DIR/openapi.yaml"
 
 echo "==> Validating backend spec..."
 validate_yaml "$DOCS_DIR/openapi.yaml"
@@ -121,4 +192,4 @@ dotnet build "$SCRIPT_DIR/Stylora.sln" -q
 echo "    OK: build succeeded"
 
 echo ""
-echo "Done. Commit the files under Stylora.Infrastructure/Generated/ when ready."
+echo "Done. Commit docs/openapi.yaml and files under Stylora.Infrastructure/Generated/ when ready."
