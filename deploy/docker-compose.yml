@@ -1,0 +1,85 @@
+services:
+
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: stylora-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stylora
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    volumes:
+      - stylora-pg-data:/var/lib/postgresql/data
+    networks: [stylora-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stylora"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/${GITHUB_ORG}/stylora-backend:latest
+    container_name: stylora-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      Database__Host: db
+      ClothingValidation__WorkerBaseUrl: http://ai-clip:8001/
+      OutfitChatModel__WorkerBaseUrl: http://ai-gemma:8002/
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      RAPIDAPI_KEY: ${RAPIDAPI_KEY}
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    volumes:
+      - stylora-clothing-seed:/data/clothing-validation
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+    networks: [stylora-net]
+
+  frontend:
+    image: ghcr.io/${GITHUB_ORG}/stylora-frontend:latest
+    container_name: stylora-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+    networks: [stylora-net]
+
+  ai-clip:
+    image: ghcr.io/${GITHUB_ORG}/stylora-ai-clip:latest
+    container_name: ai-clip
+    restart: unless-stopped
+    environment:
+      CLIP_PORT: "8001"
+      CLIP_MODEL: openai/clip-vit-base-patch32
+      HF_HOME: /root/.cache/huggingface
+    volumes:
+      - stylora-hf-cache:/root/.cache/huggingface
+    networks: [stylora-net]
+
+  ai-gemma:
+    image: ghcr.io/${GITHUB_ORG}/stylora-ai-gemma:latest
+    container_name: ai-gemma
+    restart: unless-stopped
+    environment:
+      GEMMA_PORT: "8002"
+      GEMMA_MODEL: Qwen/Qwen2.5-3B-Instruct
+      HF_HOME: /root/.cache/huggingface
+    volumes:
+      - stylora-hf-cache:/root/.cache/huggingface
+    networks: [stylora-net]
+
+volumes:
+  stylora-pg-data:
+    external: true
+  stylora-hf-cache:
+    external: true
+  stylora-clothing-seed:
+    external: true
+
+networks:
+  stylora-net:
+    external: true

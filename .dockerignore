@@ -1,0 +1,9 @@
+**/.git
+**/.idea
+**/bin
+**/obj
+**/*.user
+**/*.suo
+.env
+data/
+docs/
