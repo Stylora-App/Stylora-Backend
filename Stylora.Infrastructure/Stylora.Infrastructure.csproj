@@ -5,6 +5,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="NSwag.MSBuild" Version="14.2.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <Target Name="GenerateAiClients" BeforeTargets="Build">
+    <Exec Command="$(NSwagExe_Net90) run nswag/clip.nswag" WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Exec Command="$(NSwagExe_Net90) run nswag/gemma.nswag" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Cryptography.KeyDerivation" Version="10.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

@@ -1,0 +1,48 @@
+generate:
+  post:
+    tags: [TryOn]
+    summary: Generate a virtual try-on image
+    description: >
+      Sends the person photo and clothing image (or URL) to Google Gemini to
+      produce a composite try-on image. The person photo is saved for reuse
+      via GET /api/tryon/last-photo. At least one of `clothingImageBase64` or
+      `clothingImageUrl` must be provided.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/TryOnRequest'
+    responses:
+      '200':
+        description: Generated try-on image
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/TryOnResponse'
+      '400':
+        description: Invalid request or generation failure
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error: { type: string }
+      '401':
+        description: Not authenticated
+
+last-photo:
+  get:
+    tags: [TryOn]
+    summary: Get the last person photo used by the authenticated user
+    responses:
+      '200':
+        description: Last saved person photo
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/LastTryOnPhotoDto'
+      '401':
+        description: Not authenticated
+      '404':
+        description: No previous photo found

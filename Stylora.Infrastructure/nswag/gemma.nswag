@@ -1,0 +1,31 @@
+{
+  "runtime": "Net90",
+  "defaultVariables": null,
+  "documentGenerator": {
+    "fromDocument": {
+      "json": null,
+      "url": "https://raw.githubusercontent.com/karinaconstandache/Stylora-AI/main/docs/gemma-openapi.yaml",
+      "output": null
+    }
+  },
+  "codeGenerators": {
+    "openApiToCSharpClient": {
+      "namespace": "Stylora.Infrastructure.Generated.Gemma",
+      "className": "GemmaWorkerClient",
+      "operationGenerationMode": "SingleClientFromOperationId",
+      "generateClientInterfaces": true,
+      "injectHttpClient": true,
+      "disposeHttpClient": false,
+      "generateDtoTypes": true,
+      "jsonLibrary": "SystemTextJson",
+      "useBaseUrl": false,
+      "generateBaseUrlProperty": false,
+      "wrapDtoExceptions": true,
+      "generateExceptionClasses": true,
+      "exceptionClass": "ApiException",
+      "classStyle": "Poco",
+      "generateNullableReferenceTypes": true,
+      "output": "../OpenAPIGenerated/GemmaWorkerClient.g.cs"
+    }
+  }
+}

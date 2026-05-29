@@ -17,7 +17,15 @@ public class TryOnController : BaseApiController
         _tryOnService = tryOnService;
     }
 
+    /// <summary>Generate a virtual try-on image.</summary>
+    /// <remarks>
+    /// Sends the person photo and clothing image (or URL) to Google Gemini to produce a
+    /// composite try-on image. The person photo is saved for reuse via GET /last-photo.
+    /// </remarks>
     [HttpPost("generate")]
+    [ProducesResponseType(typeof(TryOnResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<TryOnResponse>> GenerateTryOn([FromBody] TryOnRequest request)
     {
         var userId = GetUserGuid();
@@ -34,7 +42,11 @@ public class TryOnController : BaseApiController
         }
     }
 
+    /// <summary>Get the last person photo used by the authenticated user.</summary>
     [HttpGet("last-photo")]
+    [ProducesResponseType(typeof(LastTryOnPhotoDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<LastTryOnPhotoDto>> GetLastPhoto()
     {
         var userId = GetUserGuid();

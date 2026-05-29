@@ -1,0 +1,33 @@
+profile:
+  get:
+    tags: [Users]
+    summary: Get the authenticated user's profile
+    responses:
+      '200':
+        description: User profile
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/UserProfileDto'
+      '401':
+        description: Not authenticated
+  put:
+    tags: [Users]
+    summary: Update the authenticated user's profile
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/UpdateProfileRequest'
+    responses:
+      '200':
+        description: Updated profile
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/UserProfileDto'
+      '400':
+        description: Invalid request
+      '401':
+        description: Not authenticated

@@ -1,31 +1,29 @@
-using System.Net;
-using System.Net.Http.Json;
-using System.Text;
+using System.Reflection;
+using System.Runtime.Serialization;
 using Microsoft.Extensions.Logging;
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
+using Stylora.Infrastructure.Generated.Gemma;
 
 namespace Stylora.Infrastructure.Services;
 
-public sealed class GemmaIntentWorkerService : IOutfitIntentParser, IAsyncDisposable
+public sealed class GemmaIntentWorkerService : IOutfitIntentParser
 {
     private static readonly TimeSpan HealthPollInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly OutfitChatModelSettings _settings;
+    private readonly IGemmaWorkerClient _client;
     private readonly ILogger<GemmaIntentWorkerService> _logger;
-    private readonly HttpClient _httpClient = new();
-    private bool _disposed;
 
     public GemmaIntentWorkerService(
         OutfitChatModelSettings settings,
+        IGemmaWorkerClient client,
         ILogger<GemmaIntentWorkerService> logger)
     {
         _settings = settings;
+        _client = client;
         _logger = logger;
-        _httpClient.DefaultRequestVersion = HttpVersion.Version11;
-        _httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-        _httpClient.DefaultRequestHeaders.ExpectContinue = false;
     }
 
     public async Task<OutfitIntentResult> ParseAsync(
@@ -44,35 +42,32 @@ public sealed class GemmaIntentWorkerService : IOutfitIntentParser, IAsyncDispos
 
         try
         {
-            var workerBaseUri = new Uri(_settings.WorkerBaseUrl);
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(workerBaseUri, "parse"))
+            var request = new ParseRequest
             {
-                Version = HttpVersion.Version11,
-                VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
-                Content = JsonContent.Create(new
-                {
-                    messages,
-                    modelId = _settings.ModelId,
-                    maxNewTokens = _settings.MaxNewTokens,
-                    temperature = _settings.Temperature
-                })
+                Messages = messages
+                    .Select(m => new ChatMessage
+                    {
+                        Role = Enum.TryParse<ChatMessageRole>(m.Role, ignoreCase: true, out var role)
+                            ? role
+                            : ChatMessageRole.User,
+                        Content = m.Content
+                    })
+                    .ToList(),
+                ModelId = _settings.ModelId,
+                MaxNewTokens = _settings.MaxNewTokens,
+                Temperature = (float)_settings.Temperature
             };
-            request.Headers.ConnectionClose = true;
 
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            var workerResponse = await response.Content.ReadFromJsonAsync<IntentParseWorkerResponse>(cancellationToken);
+            var workerResponse = await _client.ParseAsync(request, cancellationToken);
 
-            if (!response.IsSuccessStatusCode)
-                throw new InvalidOperationException(workerResponse?.Error ?? "Gemma intent worker rejected the request.");
-
-            if (workerResponse?.Result is null)
+            if (workerResponse.Result is null)
                 throw new InvalidOperationException("Gemma intent worker returned no parse result.");
 
-            return MergeWithHeuristics(workerResponse.Result, messages);
+            return MergeWithHeuristics(ToOutfitIntentResult(workerResponse.Result), messages);
         }
         catch (Exception ex) when (
             ex is HttpRequestException
+            or ApiException
             or InvalidOperationException
             or TimeoutException
             or TaskCanceledException)
@@ -84,32 +79,23 @@ public sealed class GemmaIntentWorkerService : IOutfitIntentParser, IAsyncDispos
 
     public async Task WarmupAsync(CancellationToken cancellationToken = default)
     {
-        var workerBaseUri = new Uri(_settings.WorkerBaseUrl);
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(Math.Max(30, _settings.WorkerStartupTimeoutSeconds));
-
-        _logger.LogInformation("Waiting for Gemma intent worker at {Url}.", workerBaseUri);
+        _logger.LogInformation("Waiting for Gemma intent worker at {Url}.", _settings.WorkerBaseUrl);
 
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(workerBaseUri, "health"))
+                var health = await _client.GetHealthAsync(cancellationToken);
+                if (health.Ready)
                 {
-                    Version = HttpVersion.Version11,
-                    VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-                };
-                request.Headers.ConnectionClose = true;
-
-                using var response = await _httpClient.SendAsync(request, cancellationToken);
-                var health = await response.Content.ReadFromJsonAsync<IntentWorkerHealthResponse>(cancellationToken);
-                if (response.IsSuccessStatusCode && health?.Ready == true)
-                {
-                    _logger.LogInformation("Gemma intent worker is ready in mode {Mode}.", health.Mode ?? "unknown");
+                    _logger.LogInformation("Gemma intent worker is ready in mode {Mode}.", health.Mode);
                     return;
                 }
             }
             catch (HttpRequestException) { }
+            catch (ApiException) { }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested) { }
 
             await Task.Delay(HealthPollInterval, cancellationToken);
@@ -118,15 +104,40 @@ public sealed class GemmaIntentWorkerService : IOutfitIntentParser, IAsyncDispos
         throw new TimeoutException("The Gemma intent worker did not become healthy before the startup timeout elapsed.");
     }
 
+    private static OutfitIntentResult ToOutfitIntentResult(IntentResult r) => new()
+    {
+        Intent = GetEnumMemberValue(r.Intent),
+        IsInScope = r.Is_in_scope,
+        OccasionText = r.Occasion_text,
+        StyleBucket = GetEnumMemberValue(r.Style_bucket),
+        Location = r.Location,
+        DateContext = r.Date_context,
+        WeatherSummary = r.Weather_summary,
+        WeatherStatus = GetEnumMemberValue(r.Weather_status),
+        TemperatureC = (double?)r.Temperature_c,
+        Constraints = r.Constraints?.ToList() ?? [],
+        ShuffleCount = r.Shuffle_count,
+        ParserSource = GetEnumMemberValue(r.Parser_source)
+    };
+
+    // Reads [EnumMember(Value = "...")] to recover the original JSON string from a generated enum value.
+    private static string GetEnumMemberValue<T>(T value) where T : struct, Enum
+    {
+        var field = typeof(T).GetField(value.ToString());
+        var attr = field?.GetCustomAttribute<EnumMemberAttribute>();
+        return attr?.Value ?? value.ToString().ToLowerInvariant();
+    }
+
+    private static string? GetEnumMemberValue<T>(T? value) where T : struct, Enum
+        => value.HasValue ? GetEnumMemberValue(value.Value) : null;
+
     private static OutfitIntentResult HeuristicParse(IReadOnlyList<OutfitChatMessageDto> messages)
     {
         var parser = new HeuristicOutfitIntentParser();
         return parser.Parse(messages);
     }
 
-    private static OutfitIntentResult MergeWithHeuristics(
-        OutfitIntentResult parsed,
-        IReadOnlyList<OutfitChatMessageDto> messages)
+    private static OutfitIntentResult MergeWithHeuristics(OutfitIntentResult parsed, IReadOnlyList<OutfitChatMessageDto> messages)
     {
         var heuristic = HeuristicParse(messages);
 
@@ -154,27 +165,4 @@ public sealed class GemmaIntentWorkerService : IOutfitIntentParser, IAsyncDispos
 
     private static string? FirstNonEmpty(string? preferred, string? fallback)
         => !string.IsNullOrWhiteSpace(preferred) ? preferred : fallback;
-
-    public ValueTask DisposeAsync()
-    {
-        if (!_disposed)
-        {
-            _disposed = true;
-            _httpClient.Dispose();
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
-    private sealed class IntentWorkerHealthResponse
-    {
-        public bool Ready { get; set; }
-        public string? Mode { get; set; }
-    }
-
-    private sealed class IntentParseWorkerResponse
-    {
-        public OutfitIntentResult? Result { get; set; }
-        public string? Error { get; set; }
-    }
 }

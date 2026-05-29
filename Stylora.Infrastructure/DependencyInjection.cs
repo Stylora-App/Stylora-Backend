@@ -1,9 +1,13 @@
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
 using Stylora.Application.Services;
 using Stylora.Infrastructure.Data;
+using Stylora.Infrastructure.Generated.Clip;
+using Stylora.Infrastructure.Generated.Gemma;
+using Stylora.Infrastructure.Http;
 using Stylora.Infrastructure.Repositories;
 using Stylora.Infrastructure.Services;
 using Pgvector.EntityFrameworkCore;
@@ -13,7 +17,7 @@ namespace Stylora.Infrastructure;
 public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructureServices(
-        this IServiceCollection services, 
+        this IServiceCollection services,
         string geminiApiKey,
         string connectionString,
         string rapidApiKey,
@@ -30,6 +34,31 @@ public static class DependencyInjection
                 npgsqlOptions.EnableRetryOnFailure(3);
             }));
 
+        // AI worker HTTP clients
+        services.AddTransient<Http11ConnectionCloseHandler>();
+
+        services.AddHttpClient("clip-worker", client =>
+        {
+            client.BaseAddress = new Uri(clothingValidationSettings.WorkerBaseUrl);
+            client.DefaultRequestVersion = HttpVersion.Version11;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+            client.DefaultRequestHeaders.ExpectContinue = false;
+        }).AddHttpMessageHandler<Http11ConnectionCloseHandler>();
+
+        services.AddSingleton<IClipWorkerClient>(sp =>
+            new ClipWorkerClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("clip-worker")));
+
+        services.AddHttpClient("gemma-worker", client =>
+        {
+            client.BaseAddress = new Uri(outfitChatModelSettings.WorkerBaseUrl);
+            client.DefaultRequestVersion = HttpVersion.Version11;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+            client.DefaultRequestHeaders.ExpectContinue = false;
+        }).AddHttpMessageHandler<Http11ConnectionCloseHandler>();
+
+        services.AddSingleton<IGemmaWorkerClient>(sp =>
+            new GemmaWorkerClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("gemma-worker")));
+
         // Register Gemini AI service
         services.AddSingleton<IGeminiService>(sp => new GeminiService(geminiApiKey));
         services.AddSingleton(clothingValidationSettings);
@@ -45,17 +74,17 @@ public static class DependencyInjection
         services.AddHostedService<ClothingValidationWorkerWarmupHostedService>();
         services.AddHostedService<ClothingReferenceSeedingHostedService>();
         services.AddHostedService<GemmaIntentWorkerWarmupHostedService>();
-        
+
         // Register ASOS shopping service
         services.AddSingleton<IAsosService>(sp => new AsosService(rapidApiKey));
-        
+
         // Register repositories
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IWardrobeRepository, WardrobeRepository>();
         services.AddScoped<IClothingReferenceEmbeddingRepository, ClothingReferenceEmbeddingRepository>();
         services.AddScoped<ISeasonAnalysisRepository, SeasonAnalysisRepository>();
         services.AddScoped<ITryOnRepository, TryOnRepository>();
-        
+
         // Register services
         services.AddScoped<IAuthService, AuthService>();
 

@@ -17,14 +17,22 @@ public class WardrobeController : BaseApiController
         _wardrobeService = wardrobeService;
     }
 
+    /// <summary>List all wardrobe items for the authenticated user.</summary>
     [HttpGet("items")]
+    [ProducesResponseType(typeof(IEnumerable<WardrobeItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<IEnumerable<WardrobeItemDto>>> GetItems()
     {
         var items = await _wardrobeService.GetAllItemsAsync(GetUserId());
         return Ok(items);
     }
 
+    /// <summary>Validate a clothing image without saving it.</summary>
+    /// <remarks>Runs the CLIP embedding worker to classify the image and return confidence, suggested labels, and category.</remarks>
     [HttpPost("items/analyze")]
+    [ProducesResponseType(typeof(WardrobeValidationDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<WardrobeValidationDto>> AnalyzeItem([FromBody] AnalyzeWardrobeItemRequest request)
     {
         try
@@ -38,7 +46,16 @@ public class WardrobeController : BaseApiController
         }
     }
 
+    /// <summary>Add a new wardrobe item.</summary>
+    /// <remarks>
+    /// Runs CLIP validation before saving. Returns 409 when the image fails the clothing check —
+    /// set <c>overrideValidationWarning=true</c> in the request body to force-add anyway.
+    /// </remarks>
     [HttpPost("items")]
+    [ProducesResponseType(typeof(CreateWardrobeItemResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(WardrobeValidationDto), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<CreateWardrobeItemResponse>> AddItem([FromBody] CreateWardrobeItemRequest request)
     {
         try
@@ -57,7 +74,12 @@ public class WardrobeController : BaseApiController
         }
     }
 
+    /// <summary>Delete a single wardrobe item.</summary>
+    /// <param name="id">The wardrobe item ID to delete.</param>
     [HttpDelete("items/{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteItem(string id)
     {
         var result = await _wardrobeService.DeleteItemAsync(GetUserId(), id);
@@ -68,7 +90,11 @@ public class WardrobeController : BaseApiController
         return NoContent();
     }
 
+    /// <summary>Delete multiple wardrobe items in one request.</summary>
     [HttpPost("items/delete-batch")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> DeleteItems([FromBody] DeleteWardrobeItemsRequest request)
     {
         if (request.ItemIds.Count == 0)

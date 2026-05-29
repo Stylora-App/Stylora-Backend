@@ -35,6 +35,34 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Description = "AI-powered wardrobe and outfit management API"
     });
+
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
+
+    options.AddSecurityDefinition("cookieAuth", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        In = Microsoft.OpenApi.Models.ParameterLocation.Cookie,
+        Name = "Stylora.Auth",
+        Description = "Cookie-based session authentication. Authenticate via POST /api/auth/login."
+    });
+
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "cookieAuth"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 });
 
 builder.Services.AddCors(options =>
@@ -90,14 +118,18 @@ var rapidApiKey = Environment.GetEnvironmentVariable("RAPIDAPI_KEY") ??
                   throw new InvalidOperationException(
                       "RapidAPI key not found. Set the RAPIDAPI_KEY environment variable or add it to .env file.");
 
-var connectionString = Environment.GetEnvironmentVariable("DATABASE_CONNECTION_STRING") ??
-                       builder.Configuration.GetConnectionString("DefaultConnection");
+var dbSection = builder.Configuration.GetSection("Database");
+var dbPassword = Environment.GetEnvironmentVariable("DATABASE_PASSWORD")
+    ?? throw new InvalidOperationException(
+        "Database password not found. Set the DB_PASSWORD environment variable.");
 
-if (string.IsNullOrWhiteSpace(connectionString))
+var connectionString = new NpgsqlConnectionStringBuilder
 {
-    throw new InvalidOperationException(
-        "Database connection string not found. Set DATABASE_CONNECTION_STRING in your environment or root .env file.");
-}
+    Host     = dbSection["Host"]     ?? throw new InvalidOperationException("Database:Host is required in appsettings."),
+    Database = dbSection["Database"] ?? throw new InvalidOperationException("Database:Database is required in appsettings."),
+    Username = dbSection["Username"] ?? throw new InvalidOperationException("Database:Username is required in appsettings."),
+    Password = dbPassword
+}.ConnectionString;
 
 var clothingValidationSettings = new Stylora.Application.Models.ClothingValidationSettings();
 builder.Configuration.GetSection("ClothingValidation").Bind(clothingValidationSettings);

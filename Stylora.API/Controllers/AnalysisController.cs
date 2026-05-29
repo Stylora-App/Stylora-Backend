@@ -18,7 +18,13 @@ public class AnalysisController : BaseApiController
         _analysisService = analysisService;
     }
 
+    /// <summary>Analyse a face photo to determine colour season.</summary>
+    /// <remarks>Calls Google Gemini Vision to classify the user's season, palette, undertone, and contrast.</remarks>
     [HttpPost("season")]
+    [ProducesResponseType(typeof(SeasonAnalysisResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<SeasonAnalysisResponse>> AnalyzeSeason([FromBody] SeasonAnalysisRequest request)
     {
         try
@@ -36,7 +42,12 @@ public class AnalysisController : BaseApiController
         }
     }
 
+    /// <summary>Get the user's most recent season analysis result.</summary>
+    /// <remarks>Returns null if the user has not completed an analysis yet.</remarks>
     [HttpGet("latest")]
+    [ProducesResponseType(typeof(SeasonAnalysisResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<SeasonAnalysisResponse?>> GetLatestAnalysis()
     {
         try
@@ -50,7 +61,11 @@ public class AnalysisController : BaseApiController
         }
     }
 
+    /// <summary>Save a season analysis result to the user's profile.</summary>
     [HttpPost("save-profile")]
+    [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<UserProfileDto>> SaveSeasonProfile([FromBody] SeasonAnalysisResponse analysis)
     {
         try

@@ -1,0 +1,24 @@
+outfit:
+  post:
+    tags: [Chat]
+    summary: Generate an outfit suggestion from conversation history
+    description: >
+      Passes the full message history to the Gemma intent worker which extracts
+      occasion, style, weather, and gender. The backend then assembles an outfit
+      from the user's wardrobe items. Returns either a follow-up question or a
+      complete outfit board.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/OutfitChatRequest'
+    responses:
+      '200':
+        description: Outfit suggestion or follow-up question
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/OutfitChatResponse'
+      '401':
+        description: Not authenticated

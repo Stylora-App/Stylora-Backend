@@ -1,0 +1,76 @@
+search:
+  get:
+    tags: [Explore]
+    summary: Search ASOS products filtered by the user's colour palette
+    parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Free-text search query. Falls back to season-based terms when omitted.
+      - name: category
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [all, tops, bottoms, dresses, shoes, accessories, outerwear]
+          default: all
+      - name: gender
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [women, men]
+      - name: season
+        in: query
+        required: false
+        schema:
+          type: string
+        description: User's season (e.g. "True Autumn") used to build the default query.
+      - name: subSeason
+        in: query
+        required: false
+        schema:
+          type: string
+        description: User's sub-season (e.g. "Deep Autumn") used to resolve the canonical palette vector.
+      - name: palette
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated hex colour codes from the user's palette (e.g. "#FF5733,#C19A6B").
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: 1-based page number.
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 48
+          default: 20
+        description: Items per page (1–48).
+    responses:
+      '200':
+        description: Paginated product results
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/ExploreResultDto'
+      '401':
+        description: Not authenticated
+      '502':
+        description: ASOS upstream error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: { type: string }

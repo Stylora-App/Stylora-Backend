@@ -15,7 +15,8 @@ components:
     cookieAuth:
       type: apiKey
       in: cookie
-      name: .AspNetCore.Cookies
+      name: Stylora.Auth
+      description: Cookie-based session authentication. Authenticate via POST /api/auth/login.
 
   schemas:
     # ── Auth ──────────────────────────────────────────────────────────────────
@@ -164,7 +165,7 @@ components:
         canOverride:         { type: boolean }
         nearestLabels:       { type: array, items: { type: string } }
         suggestedCategory:   { type: string, nullable: true }
-        suggestedArticleType:{ type: string, nullable: true }
+        suggestedArticleType: { type: string, nullable: true }
         suggestedStyle:      { type: string, nullable: true }
         suggestedColor:      { type: string, nullable: true }
         suggestedGender:     { type: string, nullable: true }
@@ -287,321 +288,48 @@ security:
 paths:
   # ── Auth ──────────────────────────────────────────────────────────────────
   /api/auth/register:
-    post:
-      tags: [Auth]
-      summary: Register a new user
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/RegisterRequest' }
-      responses:
-        "200":
-          description: Registration successful. Session cookie is set.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AuthResponse' }
-        "400":
-          description: Validation error (missing fields, weak password, email taken)
-
+    $ref: './endpoints/auth.yaml#/register'
   /api/auth/login:
-    post:
-      tags: [Auth]
-      summary: Log in with email and password
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/LoginRequest' }
-      responses:
-        "200":
-          description: Login successful. Session cookie is set.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AuthResponse' }
-        "400": { description: Missing fields }
-        "401": { description: Invalid credentials }
-
+    $ref: './endpoints/auth.yaml#/login'
   /api/auth/logout:
-    post:
-      tags: [Auth]
-      summary: Log out and clear the session cookie
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AuthResponse' }
-
+    $ref: './endpoints/auth.yaml#/logout'
   /api/auth/me:
-    get:
-      tags: [Auth]
-      summary: Get the currently authenticated user
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AuthResponse' }
-        "401": { description: Not authenticated }
-        "404": { description: User not found }
-
+    $ref: './endpoints/auth.yaml#/me'
   /api/auth/change-password:
-    post:
-      tags: [Auth]
-      summary: Change the authenticated user's password
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AuthResponse' }
-        "400": { description: Incorrect current password or weak new password }
-        "401": { description: Not authenticated }
+    $ref: './endpoints/auth.yaml#/change-password'
 
   # ── Users ─────────────────────────────────────────────────────────────────
   /api/users/profile:
-    get:
-      tags: [Users]
-      summary: Get the authenticated user's profile
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/UserProfileDto' }
-    put:
-      tags: [Users]
-      summary: Update the authenticated user's profile
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/UserProfileDto' }
+    $ref: './endpoints/users.yaml#/profile'
 
   # ── Analysis ──────────────────────────────────────────────────────────────
   /api/analysis/season:
-    post:
-      tags: [Analysis]
-      summary: Analyse a face photo to determine colour season (calls Gemini)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SeasonAnalysisRequest' }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SeasonAnalysisResponse' }
-        "502": { description: Gemini API error }
-        "500": { description: Unexpected failure }
-
+    $ref: './endpoints/analysis.yaml#/season'
   /api/analysis/latest:
-    get:
-      tags: [Analysis]
-      summary: Get the user's most recent season analysis (null if none)
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SeasonAnalysisResponse'
-                nullable: true
-
+    $ref: './endpoints/analysis.yaml#/latest'
   /api/analysis/save-profile:
-    post:
-      tags: [Analysis]
-      summary: Save a season analysis result to the user's profile
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SeasonAnalysisResponse' }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/UserProfileDto' }
+    $ref: './endpoints/analysis.yaml#/save-profile'
 
   # ── Wardrobe ──────────────────────────────────────────────────────────────
   /api/wardrobe/items:
-    get:
-      tags: [Wardrobe]
-      summary: List all wardrobe items for the authenticated user
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/WardrobeItemDto' }
-    post:
-      tags: [Wardrobe]
-      summary: Add a new wardrobe item (runs CLIP validation first)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CreateWardrobeItemRequest' }
-      responses:
-        "201":
-          description: Item created.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/CreateWardrobeItemResponse' }
-        "409":
-          description: Validation warning — item rejected. Set `overrideValidationWarning=true` to force-add.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/WardrobeValidationDto' }
-        "400": { description: Invalid image or missing fields }
-
+    $ref: './endpoints/wardrobe.yaml#/items'
   /api/wardrobe/items/analyze:
-    post:
-      tags: [Wardrobe]
-      summary: Validate a clothing image without saving it (calls CLIP worker)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/AnalyzeWardrobeItemRequest' }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/WardrobeValidationDto' }
-        "400": { description: Invalid image }
-
+    $ref: './endpoints/wardrobe.yaml#/items-analyze'
   /api/wardrobe/items/{id}:
-    delete:
-      tags: [Wardrobe]
-      summary: Delete a single wardrobe item
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      responses:
-        "204": { description: Deleted }
-        "404": { description: Item not found or not owned by user }
-
+    $ref: './endpoints/wardrobe.yaml#/items-id'
   /api/wardrobe/items/delete-batch:
-    post:
-      tags: [Wardrobe]
-      summary: Delete multiple wardrobe items in one request
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/DeleteWardrobeItemsRequest' }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  deletedCount: { type: integer }
-        "400": { description: No IDs provided }
+    $ref: './endpoints/wardrobe.yaml#/items-delete-batch'
 
   # ── Chat ──────────────────────────────────────────────────────────────────
   /api/chat/outfit:
-    post:
-      tags: [Chat]
-      summary: >
-        Send the full conversation history and receive an outfit suggestion or
-        follow-up question. Internally calls the Gemma intent worker then
-        assembles an outfit from the user's wardrobe.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/OutfitChatRequest' }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OutfitChatResponse' }
+    $ref: './endpoints/chat.yaml#/outfit'
 
   # ── Explore ───────────────────────────────────────────────────────────────
   /api/explore:
-    get:
-      tags: [Explore]
-      summary: Search ASOS products filtered by the user's colour palette
-      parameters:
-        - in: query
-          name: q
-          schema: { type: string }
-          description: Free-text search query (optional)
-        - in: query
-          name: category
-          schema:
-            type: string
-            enum: [all, tops, bottoms, dresses, shoes, accessories, outerwear]
-            default: all
-        - in: query
-          name: gender
-          schema: { type: string, enum: [women, men] }
-        - in: query
-          name: season
-          schema: { type: string }
-          description: e.g. "True Autumn"
-        - in: query
-          name: subSeason
-          schema: { type: string }
-          description: e.g. "Deep Autumn"
-        - in: query
-          name: palette
-          schema: { type: string }
-          description: Comma-separated hex codes, e.g. "#FF5733,#C19A6B"
-        - in: query
-          name: page
-          schema: { type: integer, default: 1, minimum: 1 }
-        - in: query
-          name: pageSize
-          schema: { type: integer, default: 20, minimum: 1, maximum: 48 }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ExploreResultDto' }
-        "502": { description: ASOS API error }
+    $ref: './endpoints/explore.yaml#/search'
 
   # ── Try-On ────────────────────────────────────────────────────────────────
   /api/tryon/generate:
-    post:
-      tags: [TryOn]
-      summary: Generate a virtual try-on image using Gemini
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/TryOnRequest' }
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TryOnResponse' }
-        "400": { description: Validation error }
-        "401": { description: Not authenticated }
-
+    $ref: './endpoints/tryon.yaml#/generate'
   /api/tryon/last-photo:
-    get:
-      tags: [TryOn]
-      summary: Get the last person photo used by the authenticated user
-      responses:
-        "200":
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/LastTryOnPhotoDto' }
-        "401": { description: Not authenticated }
-        "404": { description: No photo saved yet }
+    $ref: './endpoints/tryon.yaml#/last-photo'

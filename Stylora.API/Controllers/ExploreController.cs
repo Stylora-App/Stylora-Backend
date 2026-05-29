@@ -17,17 +17,19 @@ public class ExploreController : BaseApiController
         _exploreService = exploreService;
     }
 
-    /// <summary>
-    /// Search ASOS products filtered and sorted by the user's colour palette.
-    /// </summary>
+    /// <summary>Search ASOS products filtered and sorted by the user's colour palette.</summary>
     /// <param name="q">Free-text search query (optional; falls back to season-based terms).</param>
-    /// <param name="category">Category slug: all | tops | bottoms | dresses | shoes | accessories | outerwear</param>
+    /// <param name="category">Category slug: all | tops | bottoms | dresses | shoes | accessories | outerwear.</param>
+    /// <param name="gender">Gender filter: women | men.</param>
     /// <param name="season">User's season (e.g. "True Autumn") used to build the default query.</param>
     /// <param name="subSeason">User's sub-season (e.g. "Deep Autumn") used to resolve the canonical palette vector.</param>
     /// <param name="palette">Comma-separated hex colour codes from the user's palette (e.g. "#FF5733,#C19A6B").</param>
     /// <param name="page">1-based page number (default 1).</param>
     /// <param name="pageSize">Items per page, 1–48 (default 20).</param>
     [HttpGet]
+    [ProducesResponseType(typeof(ExploreResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<ExploreResultDto>> Search(
         [FromQuery] string?  q        = null,
         [FromQuery] string?  category = "all",

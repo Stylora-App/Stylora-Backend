@@ -22,7 +22,11 @@ public class AuthController : ControllerBase
         _userService = userService;
     }
 
+    /// <summary>Register a new user and start a session.</summary>
+    /// <remarks>Creates the user account and sets the session cookie. No authentication required.</remarks>
     [HttpPost("register")]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
     {
         try
@@ -70,7 +74,12 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>Log in with email and password.</summary>
+    /// <remarks>Validates credentials and sets the session cookie on success.</remarks>
     [HttpPost("login")]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
@@ -104,8 +113,11 @@ public class AuthController : ControllerBase
         });
     }
 
+    /// <summary>Log out and clear the session cookie.</summary>
     [HttpPost("logout")]
     [Authorize]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<AuthResponse>> Logout()
     {
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
@@ -117,8 +129,12 @@ public class AuthController : ControllerBase
         });
     }
 
+    /// <summary>Get the currently authenticated user.</summary>
     [HttpGet("me")]
     [Authorize]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<AuthResponse>> GetCurrentUser()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -150,8 +166,12 @@ public class AuthController : ControllerBase
         });
     }
 
+    /// <summary>Change the authenticated user's password.</summary>
     [HttpPost("change-password")]
     [Authorize]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<AuthResponse>> ChangePassword([FromBody] ChangePasswordRequest request)
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

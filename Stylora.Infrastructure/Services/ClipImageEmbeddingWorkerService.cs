@@ -1,99 +1,74 @@
-using System.Net;
-using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
+using Stylora.Infrastructure.Generated.Clip;
 
 namespace Stylora.Infrastructure.Services;
 
-public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IAsyncDisposable
+public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService
 {
     private static readonly TimeSpan HealthPollInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly ClothingValidationSettings _settings;
+    private readonly IClipWorkerClient _client;
     private readonly ILogger<ClipImageEmbeddingWorkerService> _logger;
-    private readonly HttpClient _httpClient = new();
-    private bool _disposed;
 
     public ClipImageEmbeddingWorkerService(
         ClothingValidationSettings settings,
+        IClipWorkerClient client,
         ILogger<ClipImageEmbeddingWorkerService> logger)
     {
         _settings = settings;
+        _client = client;
         _logger = logger;
-        _httpClient.DefaultRequestVersion = HttpVersion.Version11;
-        _httpClient.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
-        _httpClient.DefaultRequestHeaders.ExpectContinue = false;
     }
 
     public async Task<float[]> EmbedImageAsync(string imageBase64, CancellationToken cancellationToken = default)
     {
         var payload = NormalizeImagePayload(imageBase64);
-        var workerBaseUri = new Uri(_settings.WorkerBaseUrl);
-
         _logger.LogInformation("Requesting CLIP image embedding.");
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(workerBaseUri, "embed"))
+        EmbedResponse response;
+        try
         {
-            Version = HttpVersion.Version11,
-            VersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
-            Content = new StringContent(
-                JsonSerializer.Serialize(new { mimeType = payload.MimeType, imageBase64 = payload.Base64 }),
-                Encoding.UTF8,
-                "application/json")
-        };
-        request.Headers.ConnectionClose = true;
+            response = await _client.EmbedAsync(
+                new EmbedRequest { MimeType = payload.MimeType, ImageBase64 = payload.Base64 },
+                cancellationToken);
+        }
+        catch (ApiException<EmbedResponse> ex) when (ex.StatusCode == 400)
+        {
+            throw new ArgumentException(ex.Result.Error ?? "The CLIP embedding worker rejected the image.");
+        }
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        var workerResponse = await response.Content.ReadFromJsonAsync<EmbeddingWorkerResponse>(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(response.Error))
+            throw new ArgumentException(response.Error);
 
-        if (!response.IsSuccessStatusCode)
-            throw new ArgumentException(workerResponse?.Error ?? "The CLIP embedding worker rejected the image.");
-
-        if (!string.IsNullOrWhiteSpace(workerResponse?.Error))
-            throw new ArgumentException(workerResponse.Error);
-
-        if (workerResponse?.Embedding is null || workerResponse.Embedding.Length == 0)
+        if (response.Embedding is null || response.Embedding.Count == 0)
             throw new InvalidOperationException("The CLIP embedding worker did not return an embedding.");
 
-        _logger.LogInformation("Received CLIP image embedding with {Length} dimensions.", workerResponse.Embedding.Length);
-        return workerResponse.Embedding;
+        _logger.LogInformation("Received CLIP image embedding with {Length} dimensions.", response.Embedding.Count);
+        return [.. response.Embedding];
     }
 
     public async Task WarmupAsync(CancellationToken cancellationToken = default)
     {
-        var workerBaseUri = new Uri(_settings.WorkerBaseUrl);
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(Math.Max(30, _settings.WorkerStartupTimeoutSeconds));
-
-        _logger.LogInformation("Waiting for CLIP embedding worker at {Url}.", workerBaseUri);
+        _logger.LogInformation("Waiting for CLIP embedding worker at {Url}.", _settings.WorkerBaseUrl);
 
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(workerBaseUri, "health"))
+                var health = await _client.GetHealthAsync(cancellationToken);
+                if (health.Ready)
                 {
-                    Version = HttpVersion.Version11,
-                    VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-                };
-                request.Headers.ConnectionClose = true;
-
-                using var response = await _httpClient.SendAsync(request, cancellationToken);
-                if (response.IsSuccessStatusCode)
-                {
-                    var ready = await response.Content.ReadFromJsonAsync<EmbeddingWorkerReadyResponse>(cancellationToken);
-                    if (ready?.Ready == true)
-                    {
-                        _logger.LogInformation(
-                            "CLIP embedding worker ready with {Dimensions} dimensions.", ready.Dimensions);
-                        return;
-                    }
+                    _logger.LogInformation("CLIP embedding worker ready with {Dimensions} dimensions.", health.Dimensions);
+                    return;
                 }
             }
             catch (HttpRequestException) { }
+            catch (ApiException) { }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested) { }
 
             await Task.Delay(HealthPollInterval, cancellationToken);
@@ -136,28 +111,5 @@ public sealed class ClipImageEmbeddingWorkerService : IImageEmbeddingService, IA
         return new ImagePayload(mimeType, base64);
     }
 
-    public ValueTask DisposeAsync()
-    {
-        if (!_disposed)
-        {
-            _disposed = true;
-            _httpClient.Dispose();
-        }
-
-        return ValueTask.CompletedTask;
-    }
-
     private sealed record ImagePayload(string MimeType, string Base64);
-
-    private sealed class EmbeddingWorkerReadyResponse
-    {
-        public bool Ready { get; set; }
-        public int Dimensions { get; set; }
-    }
-
-    private sealed class EmbeddingWorkerResponse
-    {
-        public float[]? Embedding { get; set; }
-        public string? Error { get; set; }
-    }
 }

@@ -1,0 +1,131 @@
+items:
+  get:
+    tags: [Wardrobe]
+    summary: List all wardrobe items for the authenticated user
+    responses:
+      '200':
+        description: Array of wardrobe items
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '../openapi.yaml#/components/schemas/WardrobeItemDto'
+      '401':
+        description: Not authenticated
+  post:
+    tags: [Wardrobe]
+    summary: Add a new wardrobe item
+    description: >
+      Runs CLIP validation before saving. Returns 409 when the image fails the
+      clothing check — set `overrideValidationWarning: true` in the request body
+      to force-add anyway.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/CreateWardrobeItemRequest'
+    responses:
+      '201':
+        description: Item created
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateWardrobeItemResponse'
+      '400':
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: { type: string }
+      '401':
+        description: Not authenticated
+      '409':
+        description: Image failed clothing validation (override available)
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/WardrobeValidationDto'
+
+items-analyze:
+  post:
+    tags: [Wardrobe]
+    summary: Validate a clothing image without saving it
+    description: >
+      Runs the CLIP embedding worker to classify the image and return confidence,
+      suggested labels, and category.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/AnalyzeWardrobeItemRequest'
+    responses:
+      '200':
+        description: Validation result
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/WardrobeValidationDto'
+      '400':
+        description: Invalid image
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: { type: string }
+      '401':
+        description: Not authenticated
+
+items-id:
+  delete:
+    tags: [Wardrobe]
+    summary: Delete a single wardrobe item
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The wardrobe item ID to delete
+    responses:
+      '204':
+        description: Item deleted
+      '401':
+        description: Not authenticated
+      '404':
+        description: Item not found
+
+items-delete-batch:
+  post:
+    tags: [Wardrobe]
+    summary: Delete multiple wardrobe items in one request
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/DeleteWardrobeItemsRequest'
+    responses:
+      '200':
+        description: Number of items deleted
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deletedCount: { type: integer }
+      '400':
+        description: No item IDs provided
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: { type: string }
+      '401':
+        description: Not authenticated

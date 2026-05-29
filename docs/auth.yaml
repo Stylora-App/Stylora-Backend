@@ -1,0 +1,117 @@
+register:
+  post:
+    tags: [Auth]
+    summary: Register a new user
+    description: Creates the user account and sets the session cookie. No authentication required.
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/RegisterRequest'
+    responses:
+      '200':
+        description: Registration successful
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '400':
+        description: Validation error (missing fields or weak password)
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+
+login:
+  post:
+    tags: [Auth]
+    summary: Log in with email and password
+    description: Validates credentials and sets the session cookie on success.
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/LoginRequest'
+    responses:
+      '200':
+        description: Login successful
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '400':
+        description: Missing email or password
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '401':
+        description: Invalid credentials
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+
+logout:
+  post:
+    tags: [Auth]
+    summary: Log out and clear the session cookie
+    responses:
+      '200':
+        description: Logout successful
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '401':
+        description: Not authenticated
+
+me:
+  get:
+    tags: [Auth]
+    summary: Get the currently authenticated user
+    responses:
+      '200':
+        description: Authenticated user
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '401':
+        description: Not authenticated
+      '404':
+        description: User not found
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+
+change-password:
+  post:
+    tags: [Auth]
+    summary: Change the authenticated user's password
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/ChangePasswordRequest'
+    responses:
+      '200':
+        description: Password changed successfully
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '400':
+        description: Weak new password or incorrect current password
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '401':
+        description: Not authenticated

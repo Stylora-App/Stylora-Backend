@@ -1,0 +1,90 @@
+season:
+  post:
+    tags: [Analysis]
+    summary: Analyse a face photo to determine colour season
+    description: >
+      Calls Google Gemini Vision to classify the user's season, palette,
+      undertone, and contrast. Result is saved to the user's analysis history.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/SeasonAnalysisRequest'
+    responses:
+      '200':
+        description: Season analysis result
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/SeasonAnalysisResponse'
+      '401':
+        description: Not authenticated
+      '502':
+        description: Gemini Vision upstream error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error: { type: string }
+      '500':
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error: { type: string }
+
+latest:
+  get:
+    tags: [Analysis]
+    summary: Get the user's most recent season analysis result
+    description: Returns null if the user has not completed an analysis yet.
+    responses:
+      '200':
+        description: Latest analysis result (null if none)
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/SeasonAnalysisResponse'
+              nullable: true
+      '400':
+        description: Error retrieving analysis
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error: { type: string }
+      '401':
+        description: Not authenticated
+
+save-profile:
+  post:
+    tags: [Analysis]
+    summary: Save a season analysis result to the user's profile
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/SeasonAnalysisResponse'
+    responses:
+      '200':
+        description: Updated user profile
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/UserProfileDto'
+      '400':
+        description: Invalid analysis data
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                error: { type: string }
+      '401':
+        description: Not authenticated
