@@ -11,6 +11,9 @@ COPY Stylora.Application.Tests/Stylora.Application.Tests.csproj   Stylora.Applic
 RUN dotnet restore Stylora.sln
 
 COPY . .
+RUN dotnet tool install --global NSwag.ConsoleCore --version 14.2.0
+ENV PATH="$PATH:/root/.dotnet/tools"
+RUN cd Stylora.Infrastructure && nswag run nswag/clip.nswag && nswag run nswag/gemma.nswag
 RUN dotnet build Stylora.sln -c Release --no-restore
 
 # ── Test ─────────────────────────────────────────────────────────────────────
