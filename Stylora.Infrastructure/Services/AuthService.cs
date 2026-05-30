@@ -18,7 +18,7 @@ public class AuthService : IAuthService
     public async Task<User?> ValidateUserAsync(string email, string password)
     {
         var user = await _userRepository.GetByEmailAsync(email);
-        if (user == null || !user.IsActive)
+        if (user == null || !user.IsActive || user.PasswordHash == null)
             return null;
 
         if (!VerifyPassword(password, user.PasswordHash))
@@ -49,6 +49,34 @@ public class AuthService : IAuthService
         return await _userRepository.CreateAsync(user);
     }
 
+    public async Task<User> FindOrCreateGoogleUserAsync(string googleId, string email, string? firstName, string? lastName)
+    {
+        var user = await _userRepository.GetByGoogleIdAsync(googleId);
+        if (user != null)
+            return user;
+
+        user = await _userRepository.GetByEmailAsync(email.ToLowerInvariant());
+        if (user != null)
+        {
+            user.GoogleId = googleId;
+            await _userRepository.UpdateAsync(user);
+            return user;
+        }
+
+        user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = email.ToLowerInvariant(),
+            GoogleId = googleId,
+            FirstName = firstName,
+            LastName = lastName,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+
+        return await _userRepository.CreateAsync(user);
+    }
+
     public async Task<User?> GetUserByIdAsync(Guid userId)
     {
         return await _userRepository.GetByIdAsync(userId);
@@ -65,7 +93,7 @@ public class AuthService : IAuthService
             throw new InvalidOperationException(PasswordPolicy.ValidationMessage);
 
         var user = await _userRepository.GetByIdAsync(userId);
-        if (user == null)
+        if (user == null || user.PasswordHash == null)
             return false;
 
         if (!VerifyPassword(currentPassword, user.PasswordHash))
@@ -88,18 +116,13 @@ public class AuthService : IAuthService
 
     public string HashPassword(string password)
     {
-        // Generate a 128-bit salt using a secure PRNG
         byte[] salt = RandomNumberGenerator.GetBytes(128 / 8);
-
-        // Derive a 256-bit subkey (use HMACSHA256 with 100,000 iterations)
         string hashed = Convert.ToBase64String(KeyDerivation.Pbkdf2(
             password: password,
             salt: salt,
             prf: KeyDerivationPrf.HMACSHA256,
             iterationCount: 100000,
             numBytesRequested: 256 / 8));
-
-        // Combine salt and hash for storage
         return $"{Convert.ToBase64String(salt)}.{hashed}";
     }
 

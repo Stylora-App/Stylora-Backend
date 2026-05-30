@@ -2,7 +2,7 @@ register:
   post:
     tags: [Auth]
     summary: Register a new user
-    description: Creates the user account and sets the session cookie. No authentication required.
+    description: Creates the user account, returns a JWT access token, and sets the httpOnly refresh token cookie. No authentication required.
     security: []
     requestBody:
       required: true
@@ -28,7 +28,7 @@ login:
   post:
     tags: [Auth]
     summary: Log in with email and password
-    description: Validates credentials and sets the session cookie on success.
+    description: Validates credentials, returns a JWT access token, and sets the httpOnly refresh token cookie.
     security: []
     requestBody:
       required: true
@@ -56,10 +56,56 @@ login:
             schema:
               $ref: '../openapi.yaml#/components/schemas/AuthResponse'
 
+google:
+  post:
+    tags: [Auth]
+    summary: Sign in or register with Google
+    description: Verifies a Google ID token from GIS, finds or creates the user, returns a JWT access token, and sets the httpOnly refresh token cookie. No authentication required.
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '../openapi.yaml#/components/schemas/GoogleAuthRequest'
+    responses:
+      '200':
+        description: Authentication successful
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '401':
+        description: Invalid Google credential
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+
+refresh:
+  post:
+    tags: [Auth]
+    summary: Issue a new access token using the refresh token cookie
+    description: Reads the httpOnly refresh cookie, validates and rotates it, returns a new JWT access token. No Authorization header needed.
+    security: []
+    responses:
+      '200':
+        description: New access token issued
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+      '401':
+        description: Refresh token missing, invalid, or expired
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/AuthResponse'
+
 logout:
   post:
     tags: [Auth]
-    summary: Log out and clear the session cookie
+    summary: Log out and revoke the refresh token cookie
     responses:
       '200':
         description: Logout successful
@@ -67,8 +113,6 @@ logout:
           application/json:
             schema:
               $ref: '../openapi.yaml#/components/schemas/AuthResponse'
-      '401':
-        description: Not authenticated
 
 me:
   get:

@@ -64,6 +64,11 @@ public class UserRepository : IUserRepository
         return await _context.Users.AnyAsync(u => u.Email == email.ToLowerInvariant());
     }
 
+    public async Task<User?> GetByGoogleIdAsync(string googleId)
+    {
+        return await _context.Users.FirstOrDefaultAsync(u => u.GoogleId == googleId);
+    }
+
     public async Task<User> UpdateProfileAsync(Guid userId, string? firstName, string? lastName, string? profilePicture, StylePreference? style)
     {
         var user = await _context.Users

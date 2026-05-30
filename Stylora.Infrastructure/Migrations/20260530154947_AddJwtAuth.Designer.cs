@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Stylora.Infrastructure.Data;
 namespace Stylora.Infrastructure.Migrations
 {
     [DbContext(typeof(StyloraDbContext))]
-    partial class StyloraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260530154947_AddJwtAuth")]
+    partial class AddJwtAuth
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -162,6 +165,42 @@ namespace Stylora.Infrastructure.Migrations
                     b.HasIndex("ColorId");
 
                     b.ToTable("RecommendedColors");
+                });
+
+            modelBuilder.Entity("Stylora.Domain.Entities.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RefreshTokens");
                 });
 
             modelBuilder.Entity("Stylora.Domain.Entities.SeasonAnalysisResult", b =>
@@ -423,6 +462,17 @@ namespace Stylora.Infrastructure.Migrations
                     b.Navigation("Color");
 
                     b.Navigation("SeasonAnalysisResult");
+                });
+
+            modelBuilder.Entity("Stylora.Domain.Entities.RefreshToken", b =>
+                {
+                    b.HasOne("Stylora.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Stylora.Domain.Entities.SeasonAnalysisResult", b =>

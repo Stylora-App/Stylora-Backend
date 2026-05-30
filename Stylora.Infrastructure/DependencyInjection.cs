@@ -23,7 +23,8 @@ public static class DependencyInjection
         string rapidApiKey,
         ClothingValidationSettings clothingValidationSettings,
         OutfitChatModelSettings outfitChatModelSettings,
-        WeatherApiSettings weatherApiSettings)
+        WeatherApiSettings weatherApiSettings,
+        string jwtSecret)
     {
         // Configure PostgreSQL with EF Core
         services.AddDbContext<StyloraDbContext>(options =>
@@ -87,6 +88,7 @@ public static class DependencyInjection
 
         // Register services
         services.AddScoped<IAuthService, AuthService>();
+        services.AddSingleton(new JwtService(jwtSecret));
 
         return services;
     }
