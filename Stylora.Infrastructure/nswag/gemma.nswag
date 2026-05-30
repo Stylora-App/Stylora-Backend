@@ -4,7 +4,7 @@
   "documentGenerator": {
     "fromDocument": {
       "json": null,
-      "url": "https://raw.githubusercontent.com/karinaconstandache/Stylora-AI/main/docs/gemma-openapi.yaml",
+      "url": "https://raw.githubusercontent.com/Stylora-App/Stylora-AI/main/docs/gemma-openapi.yaml",
       "output": null
     }
   },
