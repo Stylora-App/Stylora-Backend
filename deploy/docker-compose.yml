@@ -28,14 +28,16 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       Database__Host: db
-      ClothingValidation__WorkerBaseUrl: http://${AI_CLIP_HOST}:${AI_CLIP_PORT:-8001}/
-      OutfitChatModel__WorkerBaseUrl: http://${AI_GEMMA_HOST}:${AI_GEMMA_PORT:-8002}/
+      ClothingValidation__WorkerBaseUrl: http://host.docker.internal:${AI_CLIP_PORT:-8001}/
+      OutfitChatModel__WorkerBaseUrl: http://host.docker.internal:${AI_GEMMA_PORT:-8002}/
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       RAPIDAPI_KEY: ${RAPIDAPI_KEY}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
       CORS_ORIGINS: ${CORS_ORIGINS}
     volumes:
       - stylora-clothing-seed:/data/clothing-validation
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
     networks: [stylora-net]
