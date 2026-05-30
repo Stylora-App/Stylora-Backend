@@ -21,10 +21,22 @@ public class ChangePasswordRequest
     public string NewPassword { get; set; } = string.Empty;
 }
 
+public class GoogleAuthRequest
+{
+    public string Credential { get; set; } = string.Empty;
+}
+
+public class RefreshRequest
+{
+    public string RefreshToken { get; set; } = string.Empty;
+}
+
 public class AuthResponse
 {
     public bool Success { get; set; }
     public string? Message { get; set; }
+    public string? AccessToken { get; set; }
+    public string? RefreshToken { get; set; }
     public UserDto? User { get; set; }
 }
 

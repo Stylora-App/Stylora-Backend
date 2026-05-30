@@ -1,11 +1,12 @@
-using Microsoft.AspNetCore.Authentication.Cookies;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using Stylora.Application;
 using Stylora.Infrastructure;
 using Stylora.Infrastructure.Data;
 
-// Load .env file from project root if it exists
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", ".env");
 if (File.Exists(envPath))
 {
@@ -15,9 +16,7 @@ if (File.Exists(envPath))
         if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#')) continue;
         var idx = trimmed.IndexOf('=');
         if (idx <= 0) continue;
-        var key = trimmed[..idx].Trim();
-        var value = trimmed[(idx + 1)..].Trim();
-        Environment.SetEnvironmentVariable(key, value);
+        Environment.SetEnvironmentVariable(trimmed[..idx].Trim(), trimmed[(idx + 1)..].Trim());
     }
 }
 
@@ -41,12 +40,12 @@ builder.Services.AddSwaggerGen(options =>
     if (File.Exists(xmlPath))
         options.IncludeXmlComments(xmlPath);
 
-    options.AddSecurityDefinition("cookieAuth", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
     {
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
-        In = Microsoft.OpenApi.Models.ParameterLocation.Cookie,
-        Name = "Stylora.Auth",
-        Description = "Cookie-based session authentication. Authenticate via POST /api/auth/login."
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "JWT access token. Obtain via POST /api/auth/login or /api/auth/google."
     });
 
     options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
@@ -57,7 +56,7 @@ builder.Services.AddSwaggerGen(options =>
                 Reference = new Microsoft.OpenApi.Models.OpenApiReference
                 {
                     Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "cookieAuth"
+                    Id = "Bearer"
                 }
             },
             Array.Empty<string>()
@@ -79,31 +78,31 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(options =>
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET")
+    ?? throw new InvalidOperationException("JWT_SECRET environment variable is required.");
+
+var googleClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
+    ?? throw new InvalidOperationException("GOOGLE_CLIENT_ID environment variable is required.");
+
+builder.Services.AddSingleton(new GoogleClientIdSettings(googleClientId));
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        options.Cookie.Name = "Stylora.Auth";
-        options.Cookie.HttpOnly = true;
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() 
-            ? CookieSecurePolicy.None 
-            : CookieSecurePolicy.Always;
-        options.ExpireTimeSpan = TimeSpan.FromDays(7);
-        options.SlidingExpiration = true;
-        options.LoginPath = "/api/auth/login";
-        options.LogoutPath = "/api/auth/logout";
-        options.AccessDeniedPath = "/api/auth/access-denied";
-        
-        options.Events = new CookieAuthenticationEvents
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            OnRedirectToLogin = context =>
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ClockSkew = TimeSpan.Zero
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = context =>
             {
+                context.HandleResponse();
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                return Task.CompletedTask;
-            },
-            OnRedirectToAccessDenied = context =>
-            {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return Task.CompletedTask;
             }
         };
@@ -111,32 +110,30 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
 builder.Services.AddAuthorization();
 
-var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? 
-                   builder.Configuration["GeminiApiKey"] ?? 
-                   throw new InvalidOperationException(
-                       "Gemini API key not found. Set the GEMINI_API_KEY environment variable or add it to .env file.");
+var geminiApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ??
+                   builder.Configuration["GeminiApiKey"] ??
+                   throw new InvalidOperationException("Gemini API key not found.");
 
-var rapidApiKey = Environment.GetEnvironmentVariable("RAPIDAPI_KEY") ?? 
-                  builder.Configuration["RapidApiKey"] ?? 
-                  throw new InvalidOperationException(
-                      "RapidAPI key not found. Set the RAPIDAPI_KEY environment variable or add it to .env file.");
+var rapidApiKey = Environment.GetEnvironmentVariable("RAPIDAPI_KEY") ??
+                  builder.Configuration["RapidApiKey"] ??
+                  throw new InvalidOperationException("RapidAPI key not found.");
 
 var dbSection = builder.Configuration.GetSection("Database");
 var dbPassword = Environment.GetEnvironmentVariable("DATABASE_PASSWORD")
-    ?? throw new InvalidOperationException(
-        "Database password not found. Set the DB_PASSWORD environment variable.");
+    ?? throw new InvalidOperationException("DATABASE_PASSWORD environment variable is required.");
 
 var connectionString = new NpgsqlConnectionStringBuilder
 {
-    Host     = dbSection["Host"]     ?? throw new InvalidOperationException("Database:Host is required in appsettings."),
-    Database = dbSection["Database"] ?? throw new InvalidOperationException("Database:Database is required in appsettings."),
-    Username = dbSection["Username"] ?? throw new InvalidOperationException("Database:Username is required in appsettings."),
+    Host     = dbSection["Host"]     ?? throw new InvalidOperationException("Database:Host is required."),
+    Database = dbSection["Database"] ?? throw new InvalidOperationException("Database:Database is required."),
+    Username = dbSection["Username"] ?? throw new InvalidOperationException("Database:Username is required."),
     Password = dbPassword
 }.ConnectionString;
 
 var clothingValidationSettings = new Stylora.Application.Models.ClothingValidationSettings();
 builder.Configuration.GetSection("ClothingValidation").Bind(clothingValidationSettings);
-clothingValidationSettings.SeedDirectoryPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, clothingValidationSettings.SeedDirectoryPath));
+clothingValidationSettings.SeedDirectoryPath = Path.GetFullPath(
+    Path.Combine(builder.Environment.ContentRootPath, clothingValidationSettings.SeedDirectoryPath));
 
 var outfitChatModelSettings = new Stylora.Application.Models.OutfitChatModelSettings();
 builder.Configuration.GetSection("OutfitChatModel").Bind(outfitChatModelSettings);
@@ -157,7 +154,8 @@ builder.Services.AddInfrastructureServices(
     rapidApiKey,
     clothingValidationSettings,
     outfitChatModelSettings,
-    weatherApiSettings);
+    weatherApiSettings,
+    jwtSecret);
 
 var app = builder.Build();
 
@@ -168,11 +166,10 @@ using (var scope = app.Services.CreateScope())
     {
         await dbContext.Database.MigrateAsync();
     }
-    catch (PostgresException ex) when (ex.MessageText.Contains("extension \"vector\" is not available", StringComparison.OrdinalIgnoreCase))
+    catch (Npgsql.PostgresException ex) when (ex.MessageText.Contains("extension \"vector\" is not available", StringComparison.OrdinalIgnoreCase))
     {
         throw new InvalidOperationException(
-            "PostgreSQL pgvector is required for clothing validation. Install the pgvector extension on the database server and restart the API.",
-            ex);
+            "PostgreSQL pgvector extension is required. Install it on the database server and restart the API.", ex);
     }
     catch (Exception ex)
     {
@@ -194,15 +191,12 @@ if (app.Environment.IsDevelopment())
 }
 
 if (!app.Environment.IsDevelopment())
-{
     app.UseHttpsRedirection();
-}
 
 app.UseCors("AllowAngular");
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
+
+public record GoogleClientIdSettings(string ClientId);

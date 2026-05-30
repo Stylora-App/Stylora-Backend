@@ -102,6 +102,10 @@ components:
           type: string
           nullable: true
           description: Short-lived JWT access token (15 min). Absent on error responses.
+        refreshToken:
+          type: string
+          nullable: true
+          description: Long-lived JWT refresh token (7 days). Store in localStorage.
         user:
           $ref: '#/components/schemas/UserDto'
           nullable: true
@@ -667,9 +671,19 @@ paths:
       operationId: refreshToken
       tags:
         - Auth
-      summary: Issue a new access token using the refresh token cookie
-      description: Reads the httpOnly refresh token cookie, validates it, rotates it, and returns a new JWT access token. No Authorization header required.
+      summary: Issue a new access token using a refresh token
+      description: Validates the refresh JWT and returns a new access token and refresh token. No Authorization header required.
       security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
       responses:
         '200':
           description: New access token issued

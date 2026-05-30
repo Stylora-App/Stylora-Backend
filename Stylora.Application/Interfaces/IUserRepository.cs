@@ -13,4 +13,5 @@ public interface IUserRepository
     Task<bool> DeleteAsync(Guid id);
     Task<bool> EmailExistsAsync(string email);
     Task<User> UpdateProfileAsync(Guid userId, string? firstName, string? lastName, string? profilePicture, StylePreference? style);
+    Task<User?> GetByGoogleIdAsync(string googleId);
 }

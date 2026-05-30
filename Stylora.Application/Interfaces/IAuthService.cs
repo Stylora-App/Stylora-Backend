@@ -12,4 +12,5 @@ public interface IAuthService
     Task UpdateLastLoginAsync(Guid userId);
     string HashPassword(string password);
     bool VerifyPassword(string password, string passwordHash);
+    Task<User> FindOrCreateGoogleUserAsync(string googleId, string email, string? firstName, string? lastName);
 }

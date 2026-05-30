@@ -40,7 +40,9 @@ public class StyloraDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Email).IsUnique();
             entity.Property(e => e.Email).HasMaxLength(256).IsRequired();
-            entity.Property(e => e.PasswordHash).HasMaxLength(512).IsRequired();
+            entity.Property(e => e.PasswordHash).HasMaxLength(512);
+            entity.Property(e => e.GoogleId).HasMaxLength(255);
+            entity.HasIndex(e => e.GoogleId).IsUnique().HasFilter("\"GoogleId\" IS NOT NULL");
             entity.Property(e => e.FirstName).HasMaxLength(100);
             entity.Property(e => e.LastName).HasMaxLength(100);
             entity.Property(e => e.ProfilePicture).HasColumnType("text");
