@@ -3,17 +3,17 @@ info:
   title: Stylora Backend API
   version: '1.0'
   description: |
-    REST API for the Stylora fashion app. All endpoints except `/api/auth/register`, `/api/auth/login` require an authenticated session cookie.
+    REST API for the Stylora fashion app. Auth uses JWT Bearer tokens. Login/register/google/refresh are public; all other endpoints require a valid access token in the Authorization header.
 servers:
   - url: 'http://localhost:8080'
     description: Local / Docker
 components:
   securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: Stylora.Auth
-      description: Cookie-based session authentication. Authenticate via POST /api/auth/login.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token. Obtain via POST /api/auth/login or /api/auth/google.
   schemas:
     RegisterRequest:
       type: object
@@ -82,6 +82,14 @@ components:
         createdAt:
           type: string
           format: date-time
+    GoogleAuthRequest:
+      type: object
+      required:
+        - credential
+      properties:
+        credential:
+          type: string
+          description: Google ID token from the GIS credential response.
     AuthResponse:
       type: object
       properties:
@@ -90,6 +98,10 @@ components:
         message:
           type: string
           nullable: true
+        accessToken:
+          type: string
+          nullable: true
+          description: Short-lived JWT access token (15 min). Absent on error responses.
         user:
           $ref: '#/components/schemas/UserDto'
           nullable: true
@@ -525,7 +537,7 @@ components:
           type: string
           nullable: true
 security:
-  - cookieAuth: []
+  - bearerAuth: []
 paths:
   /api/auth/register:
     post:
@@ -533,7 +545,7 @@ paths:
       tags:
         - Auth
       summary: Register a new user
-      description: Creates the user account and sets the session cookie. No authentication required.
+      description: Creates the user account and returns a JWT access token. Sets the refresh token cookie. No authentication required.
       security: []
       requestBody:
         required: true
@@ -560,7 +572,7 @@ paths:
       tags:
         - Auth
       summary: Log in with email and password
-      description: Validates credentials and sets the session cookie on success.
+      description: Validates credentials and returns a JWT access token. Sets the refresh token cookie.
       security: []
       requestBody:
         required: true
@@ -592,7 +604,7 @@ paths:
       operationId: logout
       tags:
         - Auth
-      summary: Log out and clear the session cookie
+      summary: Log out and revoke the refresh token cookie
       responses:
         '200':
           description: Logout successful
@@ -619,6 +631,54 @@ paths:
           description: Not authenticated
         '404':
           description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /api/auth/google:
+    post:
+      operationId: googleAuth
+      tags:
+        - Auth
+      summary: Sign in or register with Google
+      description: Verifies a Google ID token from GIS, then finds or creates the user. Returns a JWT access token and sets the refresh token cookie. No authentication required.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleAuthRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid Google credential
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /api/auth/refresh:
+    post:
+      operationId: refreshToken
+      tags:
+        - Auth
+      summary: Issue a new access token using the refresh token cookie
+      description: Reads the httpOnly refresh token cookie, validates it, rotates it, and returns a new JWT access token. No Authorization header required.
+      security: []
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Refresh token missing, invalid, or expired
           content:
             application/json:
               schema:
