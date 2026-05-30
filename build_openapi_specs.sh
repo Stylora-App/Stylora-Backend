@@ -17,8 +17,8 @@ GENERATED_DIR="$SCRIPT_DIR/Stylora.Infrastructure/Generated"
 DOCS_DIR="$SCRIPT_DIR/docs"
 SPECS_REF="${SPECS_REF:-main}"
 
-CLIP_SPEC_URL="https://raw.githubusercontent.com/karinaconstandache/Stylora-AI/${SPECS_REF}/docs/clip-openapi.yaml"
-GEMMA_SPEC_URL="https://raw.githubusercontent.com/karinaconstandache/Stylora-AI/${SPECS_REF}/docs/gemma-openapi.yaml"
+CLIP_SPEC_URL="https://raw.githubusercontent.com/Stylora-App/Stylora-AI/${SPECS_REF}/docs/clip-openapi.yaml"
+GEMMA_SPEC_URL="https://raw.githubusercontent.com/Stylora-App/Stylora-AI/${SPECS_REF}/docs/gemma-openapi.yaml"
 
 CLIP_SPEC_LOCAL="/tmp/clip-openapi.yaml"
 GEMMA_SPEC_LOCAL="/tmp/gemma-openapi.yaml"
