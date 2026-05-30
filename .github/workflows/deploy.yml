@@ -22,6 +22,13 @@ jobs:
       - name: Restore
         run: dotnet restore Stylora.sln
 
+      - name: Generate NSwag clients
+        run: |
+          dotnet tool install --global NSwag.ConsoleCore --version 14.2.0
+          cd Stylora.Infrastructure
+          nswag run nswag/clip.nswag /runtime:Net90
+          nswag run nswag/gemma.nswag /runtime:Net90
+
       - name: Build
         run: dotnet build Stylora.sln -c Release --no-restore
 

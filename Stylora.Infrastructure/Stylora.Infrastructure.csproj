@@ -11,7 +11,7 @@
     </PackageReference>
   </ItemGroup>
 
-  <Target Name="GenerateAiClients" BeforeTargets="Build">
+  <Target Name="GenerateAiClients" BeforeTargets="Build" Condition="'$(CI)' != 'true'">
     <Exec Command="$(NSwagExe_Net90) run nswag/clip.nswag" WorkingDirectory="$(MSBuildProjectDirectory)" />
     <Exec Command="$(NSwagExe_Net90) run nswag/gemma.nswag" WorkingDirectory="$(MSBuildProjectDirectory)" />
   </Target>
