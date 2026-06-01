@@ -135,11 +135,19 @@ builder.Configuration.GetSection("ClothingValidation").Bind(clothingValidationSe
 clothingValidationSettings.SeedDirectoryPath = Path.GetFullPath(
     Path.Combine(builder.Environment.ContentRootPath, clothingValidationSettings.SeedDirectoryPath));
 
+var clipPort = Environment.GetEnvironmentVariable("AI_CLIP_PORT");
+if (clipPort != null)
+    clothingValidationSettings.WorkerBaseUrl = $"http://localhost:{clipPort}/";
+
 var outfitChatModelSettings = new Stylora.Application.Models.OutfitChatModelSettings();
 builder.Configuration.GetSection("OutfitChatModel").Bind(outfitChatModelSettings);
 outfitChatModelSettings.ModelId = Environment.GetEnvironmentVariable("GEMMA_MODEL_ID")
     ?? builder.Configuration["OutfitChatModel:ModelId"]
     ?? outfitChatModelSettings.ModelId;
+
+var gemmaPort = Environment.GetEnvironmentVariable("AI_GEMMA_PORT");
+if (gemmaPort != null)
+    outfitChatModelSettings.WorkerBaseUrl = $"http://localhost:{gemmaPort}/";
 
 var weatherApiSettings = new Stylora.Application.Models.WeatherApiSettings();
 builder.Configuration.GetSection("WeatherApi").Bind(weatherApiSettings);

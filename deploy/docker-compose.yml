@@ -25,7 +25,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: Development
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       Database__Host: db
       ClothingValidation__WorkerBaseUrl: http://host.docker.internal:${AI_CLIP_PORT:-8001}/
