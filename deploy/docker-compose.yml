@@ -48,6 +48,9 @@ services:
     image: ghcr.io/stylora-app/stylora-frontend:latest
     container_name: stylora-frontend
     restart: unless-stopped
+    environment:
+      - VITE_BACKEND_URL=http://host.docker.internal:${BACKEND_PORT:-8080}/api
+    extra_hosts:
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
     networks: [stylora-net]
