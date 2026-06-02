@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddHttpClient("gemma-worker", client =>
         {
             client.BaseAddress = new Uri(outfitChatModelSettings.WorkerBaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(outfitChatModelSettings.WorkerRequestTimeoutSeconds);
             client.DefaultRequestVersion = HttpVersion.Version11;
             client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
             client.DefaultRequestHeaders.ExpectContinue = false;

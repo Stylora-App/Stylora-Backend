@@ -8,6 +8,7 @@ public sealed class OutfitChatModelSettings
     public bool WarmupWorkerOnStartup { get; set; } = false;
     public int MaxNewTokens { get; set; } = 220;
     public double Temperature { get; set; } = 0.1;
+    public int WorkerRequestTimeoutSeconds { get; set; } = 20;
 }
 
 public sealed class WeatherApiSettings
