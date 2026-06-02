@@ -25,11 +25,9 @@ services:
       db:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       Database__Host: db
-      ClothingValidation__WorkerBaseUrl: http://host.docker.internal:${AI_CLIP_PORT:-8001}/
-      OutfitChatModel__WorkerBaseUrl: http://host.docker.internal:${AI_GEMMA_PORT:-8002}/
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       RAPIDAPI_KEY: ${RAPIDAPI_KEY}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
@@ -38,11 +36,9 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     volumes:
       - stylora-clothing-seed:/data/clothing-validation
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
-    networks: [stylora-net]
+    networks: [stylora-net, stylora-ai-net]
 
   frontend:
     image: ghcr.io/stylora-app/stylora-frontend:latest
@@ -62,4 +58,6 @@ volumes:
 
 networks:
   stylora-net:
+    external: true
+  stylora-ai-net:
     external: true
