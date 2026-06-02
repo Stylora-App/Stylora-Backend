@@ -30,12 +30,12 @@ jobs:
           nswag run nswag/gemma.nswag
 
       - name: Build
-        run: dotnet build Stylora.sln -c Debug --no-restore
+        run: dotnet build Stylora.sln -c Release --no-restore
 
       - name: Test
         run: |
           dotnet test Stylora.Application.Tests/Stylora.Application.Tests.csproj \
-            -c Debug --no-build \
+            -c Release --no-build \
             --logger "trx;LogFileName=results.trx" \
             --results-directory TestResults
 
