@@ -1,5 +1,5 @@
 services:
-
+ 
   db:
     image: pgvector/pgvector:pg16
     container_name: stylora-db
