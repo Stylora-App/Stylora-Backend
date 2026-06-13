@@ -1,540 +1,344 @@
+using Moq;
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
 using Stylora.Application.Services;
-using Stylora.Domain.Entities;
 using Xunit;
 
 namespace Stylora.Application.Tests.Services;
 
 public class OutfitChatServiceTests
 {
-    [Fact]
-    public async Task ProcessAsync_ReturnsOutOfScope_WhenConversationIsNotAboutOutfits()
+    private readonly Mock<IWardrobeService> _wardrobeService = new();
+    private readonly Mock<IUserService> _userService = new();
+    private readonly Mock<IOutfitIntentParser> _intentParser = new();
+    private readonly Mock<IWeatherService> _weatherService = new();
+    private readonly OutfitChatService _service;
+
+    public OutfitChatServiceTests()
     {
-        var service = CreateService(
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "out_of_scope",
-                IsInScope = false
-            }),
-            new FakeWeatherService(null));
+        SetupWardrobe([]);
+        SetupProfile(new UserProfileDto());
+        SetupIntent(new OutfitIntentResult { Intent = "generate_outfit", IsInScope = true });
+        SetupWeather(null);
+        _service = new OutfitChatService(_wardrobeService.Object, _userService.Object, _intentParser.Object, _weatherService.Object);
+    }
 
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "user", Content = "Tell me a joke." }
-            ]
-        });
+    [Fact]
+    public async Task ProcessAsync_NoUserMessages_ReturnsFollowUpWithoutParsingIntent()
+    {
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest());
 
+        // Assert
+        Assert.Equal("follow_up", response.Status);
+        Assert.Equal(["occasion", "weather"], response.MissingFields);
+        _intentParser.Verify(
+            p => p.ParseAsync(It.IsAny<IReadOnlyList<OutfitChatMessageDto>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ConversationNotAboutOutfits_ReturnsOutOfScope()
+    {
+        // Arrange
+        SetupIntent(new OutfitIntentResult { Intent = "out_of_scope", IsInScope = false });
+
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), Request(Msg("user", "Tell me a joke.")));
+
+        // Assert
         Assert.Equal("out_of_scope", response.Status);
         Assert.Null(response.Outfit);
     }
 
     [Fact]
-    public async Task ProcessAsync_ReturnsOutOfScope_WhenFollowUpReplyIsUnrelated()
+    public async Task ProcessAsync_UnrelatedFollowUpReply_ReturnsOutOfScope()
     {
-        var wardrobe = new FakeWardrobeService(
-        [
-            new WardrobeItemDto { Id = "top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "top.png", Color = "green", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "bottom", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "bottom.png", Color = "blue", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "shoes", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
-        ]);
+        // Arrange
+        SetupWardrobe(CasualWomenWardrobe());
+        SetupProfile(new UserProfileDto { Palette = ["#6B7A5E"] });
 
-        var service = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "generate_outfit",
-                IsInScope = true
-            }),
-            new FakeWeatherService(null));
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), Request(
+            Msg("assistant", "Tell me where you are headed, and I will put together a look from your saved wardrobe."),
+            Msg("user", "pancakes")));
 
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "assistant", Content = "Tell me where you are headed, and I will put together a look from your saved wardrobe." },
-                new OutfitChatMessageDto { Role = "user", Content = "pancakes" }
-            ]
-        });
-
+        // Assert
         Assert.Equal("out_of_scope", response.Status);
         Assert.Null(response.Outfit);
     }
 
     [Fact]
-    public async Task ProcessAsync_AsksForWeather_WhenOccasionExistsButWeatherDoesNot()
+    public async Task ProcessAsync_OccasionKnownButWeatherUnresolved_AsksForWeather()
     {
-        var service = CreateService(
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "generate_outfit",
-                IsInScope = true,
-                OccasionText = "work",
-                StyleBucket = "office"
-            }),
-            new FakeWeatherService(null));
-
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
+        // Arrange
+        SetupIntent(new OutfitIntentResult
         {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "user", Content = "Build me a work outfit." }
-            ]
+            Intent = "generate_outfit",
+            IsInScope = true,
+            OccasionText = "work",
+            StyleBucket = "office"
         });
 
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), Request(Msg("user", "Build me a work outfit.")));
+
+        // Assert
         Assert.Equal("follow_up", response.Status);
         Assert.Contains("weather", response.MissingFields);
     }
 
     [Fact]
-    public async Task ProcessAsync_ReturnsOutfit_WhenConversationHasEnoughContextAndPieces()
+    public async Task ProcessAsync_EmptyWardrobe_ReturnsNotEnoughPieces()
     {
-        var wardrobeService = new FakeWardrobeService(
-        [
-            new WardrobeItemDto { Id = "1", Category = "top", ArticleTypeLabel = "shirt", Style = "office", AudienceTag = "women", Image = "top.png", Color = "white", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "2", Category = "bottom", ArticleTypeLabel = "trousers", Style = "formal", AudienceTag = "women", Image = "bottom.png", Color = "black", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "3", Category = "shoes", ArticleTypeLabel = "heels", Style = "elegant", AudienceTag = "women", Image = "shoes.png", Color = "black", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "4", Category = "outerwear", ArticleTypeLabel = "blazer", Style = "office", AudienceTag = "women", Image = "layer.png", Color = "black", ValidationStatus = "pass" }
-        ]);
-        var userService = new FakeUserService(new UserProfileDto
-        {
-            Season = "Autumn",
-            Palette = ["#6B7A5E", "#CBB89D"]
-        });
-        var service = new OutfitChatService(
-            wardrobeService,
-            userService,
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "generate_outfit",
-                IsInScope = true,
-                OccasionText = "work",
-                StyleBucket = "office",
-                WeatherSummary = "rainy, cool",
-                WeatherStatus = "rainy",
-                TemperatureC = 11
-            }),
-            new FakeWeatherService(new ResolvedWeatherContext
-            {
-                Status = "rainy",
-                TemperatureC = 11,
-                ThermalBand = "cold",
-                Summary = "rainy, cold, 11C"
-            }));
+        // Arrange
+        SetupIntent(CompleteIntent());
+        SetupWeather(MildWeather());
 
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "user", Content = "Create a work outfit for a rainy and cool day." }
-            ]
-        });
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), Request(Msg("user", "Build me a casual weekend outfit.")));
 
+        // Assert
+        Assert.Equal("not_enough_pieces", response.Status);
+        Assert.Equal(["top", "bottom", "shoes"], response.MissingRoles);
+    }
+
+    [Theory]
+    [InlineData("top", "bottom,shoes")]
+    [InlineData("top,bottom", "shoes")]
+    [InlineData("shoes", "top,bottom")]
+    public async Task ProcessAsync_IncompleteWardrobe_ReportsMissingRoles(string ownedCategories, string expectedMissing)
+    {
+        // Arrange
+        SetupIntent(CompleteIntent());
+        SetupWeather(MildWeather());
+        SetupWardrobe(ownedCategories.Split(',').Select(category => Item(category, category, null, audience: "men")).ToList());
+
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), Request(Msg("user", "Build me a casual weekend outfit.")));
+
+        // Assert
+        Assert.Equal("not_enough_pieces", response.Status);
+        Assert.Equal(expectedMissing.Split(','), response.MissingRoles);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_FullContextAndCompleteWardrobe_ReturnsOutfit()
+    {
+        // Arrange
+        SetupWardrobe(OfficeWomenWardrobe());
+        SetupProfile(new UserProfileDto { Season = "Autumn", Palette = ["#6B7A5E", "#CBB89D"] });
+        SetupIntent(new OutfitIntentResult
+        {
+            Intent = "generate_outfit",
+            IsInScope = true,
+            OccasionText = "work",
+            StyleBucket = "office",
+            WeatherSummary = "rainy, cool",
+            WeatherStatus = "rainy",
+            TemperatureC = 11
+        });
+        SetupWeather(new ResolvedWeatherContext { Status = "rainy", TemperatureC = 11, ThermalBand = "cold", Summary = "rainy, cold, 11C" });
+
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), Request(
+            Msg("user", "Create a work outfit for a rainy and cool day.")));
+
+        // Assert
         Assert.Equal("success", response.Status);
         Assert.NotNull(response.Outfit);
         Assert.True(response.Outfit!.Items.Count >= 3);
     }
 
     [Fact]
-    public async Task ProcessAsync_ChangesLeadPiece_WhenPaletteChanges()
+    public async Task ProcessAsync_SuccessfulFlow_QueriesEachDependencyExactlyOnce()
     {
-        var wardrobe = new FakeWardrobeService(
-        [
-            new WardrobeItemDto { Id = "green-top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "green.png", Color = "green", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "pink-top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "pink.png", Color = "pink", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "jeans", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "jeans.png", Color = "blue", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "sneakers", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
-        ]);
+        // Arrange
+        var userId = Guid.NewGuid().ToString();
+        SetupWardrobe(CasualWomenWardrobe());
+        SetupProfile(new UserProfileDto { Palette = ["#6B7A5E"] });
+        SetupIntent(CompleteIntent());
+        SetupWeather(MildWeather());
 
-        var parser = new FakeIntentParser(new OutfitIntentResult
-        {
-            Intent = "generate_outfit",
-            IsInScope = true,
-            OccasionText = "weekend",
-            StyleBucket = "casual",
-            WeatherStatus = "sunny",
-            TemperatureC = 22
-        });
-        var weather = new FakeWeatherService(new ResolvedWeatherContext
-        {
-            Status = "sunny",
-            TemperatureC = 22,
-            ThermalBand = "warm",
-            Summary = "sunny, warm, 22C"
-        });
+        // Act
+        await _service.ProcessAsync(userId, Request(Msg("user", "Build me a casual weekend outfit.")));
 
-        var greenService = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
-            parser,
-            weather);
-        var pinkService = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#F0A0B5"] }),
-            parser,
-            weather);
+        // Assert
+        _intentParser.Verify(p => p.ParseAsync(It.IsAny<IReadOnlyList<OutfitChatMessageDto>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _weatherService.Verify(w => w.ResolveAsync(It.IsAny<OutfitIntentResult>(), It.IsAny<CancellationToken>()), Times.Once);
+        _wardrobeService.Verify(w => w.GetAllItemsAsync(userId), Times.Once);
+        _userService.Verify(u => u.GetProfileAsync(userId), Times.Once);
+    }
 
-        var request = new OutfitChatRequest
+    [Fact]
+    public async Task ProcessAsync_PaletteChanges_ChangesLeadPiece()
+    {
+        // Arrange
+        var wardrobe = new List<WardrobeItemDto>
         {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "user", Content = "Build me a sunny weekend outfit." }
-            ]
+            Item("green-top", "top", "shirt", color: "green"),
+            Item("pink-top", "top", "shirt", color: "pink"),
+            Item("jeans", "bottom", "jeans", color: "blue"),
+            Item("sneakers", "shoes", "sneakers", color: "white")
         };
+        var request = Request(Msg("user", "Build me a sunny weekend outfit."));
+        var greenService = CreateServiceWithPalette(wardrobe, "#6B7A5E");
+        var pinkService = CreateServiceWithPalette(wardrobe, "#F0A0B5");
 
+        // Act
         var greenResponse = await greenService.ProcessAsync(Guid.NewGuid().ToString(), request);
         var pinkResponse = await pinkService.ProcessAsync(Guid.NewGuid().ToString(), request);
 
+        // Assert
         Assert.Equal("green-top", greenResponse.Outfit!.Items.First().Id);
         Assert.Equal("pink-top", pinkResponse.Outfit!.Items.First().Id);
     }
 
     [Fact]
-    public async Task ProcessAsync_UsesStandaloneLocationReply_FromFollowUpConversation()
+    public async Task ProcessAsync_StandaloneLocationReply_ResolvesWeatherForThatCity()
     {
-        var wardrobe = new FakeWardrobeService(
-        [
-            new WardrobeItemDto { Id = "top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "top.png", Color = "green", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "bottom", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "bottom.png", Color = "blue", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "shoes", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
-        ]);
+        // Arrange
+        SetupWardrobe(CasualWomenWardrobe());
+        SetupProfile(new UserProfileDto { Palette = ["#6B7A5E"] });
+        SetupIntent(new OutfitIntentResult { Intent = "generate_outfit", IsInScope = false, OccasionText = "weekend", StyleBucket = "casual" });
+        SetupCityWeather("Brasov", new ResolvedWeatherContext { Status = "cloudy", TemperatureC = 17, ThermalBand = "cool", Summary = "cloudy, cool, 17C" });
 
-        var service = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "generate_outfit",
-                IsInScope = false,
-                OccasionText = "weekend",
-                StyleBucket = "casual"
-            }),
-            new ConditionalWeatherService());
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), Request(
+            Msg("assistant", "Describe the occasion and weather, and I will build an outfit only from your Stylora wardrobe."),
+            Msg("user", "Build me a weekend outfit."),
+            Msg("assistant", "What weather should I dress for? You can describe it directly or tell me the city."),
+            Msg("user", "Brasov")));
 
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "assistant", Content = "Describe the occasion and weather, and I will build an outfit only from your Stylora wardrobe." },
-                new OutfitChatMessageDto { Role = "user", Content = "Build me a weekend outfit." },
-                new OutfitChatMessageDto { Role = "assistant", Content = "What weather should I dress for? You can describe it directly or tell me the city." },
-                new OutfitChatMessageDto { Role = "user", Content = "Brasov" }
-            ]
-        });
-
+        // Assert
         Assert.Equal("success", response.Status);
-        Assert.NotNull(response.Outfit);
         Assert.Contains("cloudy", response.Outfit!.WeatherSummary, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task ProcessAsync_UsesCombinedStyleAndLocationReply_FromFollowUpConversation()
+    public async Task ProcessAsync_ShuffleMessageInConversation_ReturnsAlternativeOutfit()
     {
-        var wardrobe = new FakeWardrobeService(
+        // Arrange
+        SetupWardrobe(
         [
-            new WardrobeItemDto { Id = "top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "top.png", Color = "green", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "bottom", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "bottom.png", Color = "blue", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "shoes", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
+            Item("green-top", "top", "shirt", color: "green"),
+            Item("pink-top", "top", "shirt", color: "pink"),
+            Item("jeans", "bottom", "jeans", color: "blue"),
+            Item("sneakers", "shoes", "sneakers", color: "white")
         ]);
+        SetupProfile(new UserProfileDto { Palette = ["#6B7A5E", "#F0A0B5"] });
+        SetupIntent(CompleteIntent());
+        SetupWeather(MildWeather());
 
-        var service = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "generate_outfit",
-                IsInScope = false
-            }),
-            new ConditionalWeatherService());
+        // Act
+        var response = await _service.ProcessAsync(Guid.NewGuid().ToString(), Request(
+            Msg("user", "Build me a casual outfit for today."),
+            Msg("assistant", "I put together a casual look for weekend in sunny, warm, 22C weather."),
+            Msg("user", "Shuffle another option")));
 
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "assistant", Content = "Describe the occasion and weather, and I will build an outfit only from your Stylora wardrobe." },
-                new OutfitChatMessageDto { Role = "user", Content = "i need an outfit to go out for a drink tonight in Brasov" },
-                new OutfitChatMessageDto { Role = "assistant", Content = "Tell me the occasion or vibe and either the weather or the city I should check." },
-                new OutfitChatMessageDto { Role = "user", Content = "casual, Brasov" },
-                new OutfitChatMessageDto { Role = "assistant", Content = "Tell me if this is for today or tomorrow, or describe the weather directly." },
-                new OutfitChatMessageDto { Role = "user", Content = "tonight" }
-            ]
-        });
-
+        // Assert
         Assert.Equal("success", response.Status);
-        Assert.NotNull(response.Outfit);
-        Assert.Equal("casual", response.Outfit!.Style, ignoreCase: true);
-        Assert.Contains("cloudy", response.Outfit.WeatherSummary, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task ProcessAsync_UsesStandaloneLocationAndDate_FromDirectRequest()
-    {
-        var wardrobe = new FakeWardrobeService(
-        [
-            new WardrobeItemDto { Id = "top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "top.png", Color = "green", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "bottom", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "bottom.png", Color = "blue", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "shoes", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
-        ]);
-
-        var service = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "generate_outfit",
-                IsInScope = true,
-                OccasionText = "weekend",
-                StyleBucket = "casual"
-            }),
-            new ConditionalWeatherService());
-
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "user", Content = "Build me a weekend outfit for Brasov tomorrow." }
-            ]
-        });
-
-        Assert.Equal("success", response.Status);
-        Assert.NotNull(response.Outfit);
-        Assert.Contains("cloudy", response.Outfit!.WeatherSummary, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task ProcessAsync_UsesTripPrompt_FromDirectRequest()
-    {
-        var wardrobe = new FakeWardrobeService(
-        [
-            new WardrobeItemDto { Id = "top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "top.png", Color = "green", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "bottom", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "bottom.png", Color = "blue", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "shoes", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
-        ]);
-
-        var service = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "out_of_scope",
-                IsInScope = false
-            }),
-            new MilanWeatherService());
-
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "user", Content = "What should I wear for a trip to Milan this weekend?" }
-            ]
-        });
-
-        Assert.Equal("success", response.Status);
-        Assert.NotNull(response.Outfit);
-        Assert.Equal("casual", response.Outfit!.Style, ignoreCase: true);
-        Assert.Contains("sunny", response.Outfit.WeatherSummary, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task ProcessAsync_UsesNaturalSentenceLocationAndTonight_FromDirectRequest()
-    {
-        var wardrobe = new FakeWardrobeService(
-        [
-            new WardrobeItemDto { Id = "top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "top.png", Color = "green", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "bottom", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "bottom.png", Color = "blue", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "shoes", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
-        ]);
-
-        var service = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E"] }),
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "generate_outfit",
-                IsInScope = false
-            }),
-            new ConditionalWeatherService());
-
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "user", Content = "i need an outfit to go out tonight in Brasov for a casual drink" }
-            ]
-        });
-
-        Assert.Equal("success", response.Status);
-        Assert.NotNull(response.Outfit);
-        Assert.Equal("casual", response.Outfit!.Style, ignoreCase: true);
-        Assert.Contains("cloudy", response.Outfit.WeatherSummary, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task ProcessAsync_SelectsNextCandidate_WhenShuffleMessageExistsEvenIfParserDoesNotCountIt()
-    {
-        var wardrobe = new FakeWardrobeService(
-        [
-            new WardrobeItemDto { Id = "green-top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "green.png", Color = "green", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "pink-top", Category = "top", ArticleTypeLabel = "shirt", Style = "casual", AudienceTag = "women", Image = "pink.png", Color = "pink", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "jeans", Category = "bottom", ArticleTypeLabel = "jeans", Style = "casual", AudienceTag = "women", Image = "jeans.png", Color = "blue", ValidationStatus = "pass" },
-            new WardrobeItemDto { Id = "sneakers", Category = "shoes", ArticleTypeLabel = "sneakers", Style = "casual", AudienceTag = "women", Image = "shoes.png", Color = "white", ValidationStatus = "pass" }
-        ]);
-
-        var service = new OutfitChatService(
-            wardrobe,
-            new FakeUserService(new UserProfileDto { Palette = ["#6B7A5E", "#F0A0B5"] }),
-            new FakeIntentParser(new OutfitIntentResult
-            {
-                Intent = "generate_outfit",
-                IsInScope = true,
-                OccasionText = "weekend",
-                StyleBucket = "casual",
-                Location = "Brasov",
-                DateContext = "today",
-                ShuffleCount = 0
-            }),
-            new ConditionalWeatherService());
-
-        var response = await service.ProcessAsync(Guid.NewGuid().ToString(), new OutfitChatRequest
-        {
-            Messages =
-            [
-                new OutfitChatMessageDto { Role = "user", Content = "Build me a casual outfit for Brasov today." },
-                new OutfitChatMessageDto { Role = "assistant", Content = "I put together a casual look for weekend in cloudy, cool, 17C weather." },
-                new OutfitChatMessageDto { Role = "user", Content = "Shuffle another option" }
-            ]
-        });
-
-        Assert.Equal("success", response.Status);
-        Assert.NotNull(response.Outfit);
         Assert.StartsWith("Here is another", response.AssistantMessage, StringComparison.Ordinal);
     }
 
-    private static OutfitChatService CreateService(IOutfitIntentParser intentParser, IWeatherService weatherService)
+    private OutfitChatService CreateServiceWithPalette(List<WardrobeItemDto> wardrobe, string paletteHex)
     {
-        return new OutfitChatService(
-            new FakeWardrobeService([]),
-            new FakeUserService(new UserProfileDto()),
-            intentParser,
-            weatherService);
+        var wardrobeMock = new Mock<IWardrobeService>();
+        wardrobeMock
+            .Setup(w => w.GetAllItemsAsync(It.IsAny<string>()))
+            .ReturnsAsync(wardrobe);
+        var userMock = new Mock<IUserService>();
+        userMock
+            .Setup(u => u.GetProfileAsync(It.IsAny<string>()))
+            .ReturnsAsync(new UserProfileDto { Palette = [paletteHex] });
+        var intentMock = new Mock<IOutfitIntentParser>();
+        intentMock
+            .Setup(p => p.ParseAsync(It.IsAny<IReadOnlyList<OutfitChatMessageDto>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CompleteIntent());
+        var weatherMock = new Mock<IWeatherService>();
+        weatherMock
+            .Setup(w => w.ResolveAsync(It.IsAny<OutfitIntentResult>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MildWeather());
+        return new OutfitChatService(wardrobeMock.Object, userMock.Object, intentMock.Object, weatherMock.Object);
     }
 
-    private sealed class FakeWardrobeService : IWardrobeService
+    private void SetupWardrobe(IReadOnlyCollection<WardrobeItemDto> items)
+        => _wardrobeService
+            .Setup(w => w.GetAllItemsAsync(It.IsAny<string>()))
+            .ReturnsAsync(items);
+
+    private void SetupProfile(UserProfileDto profile)
+        => _userService
+            .Setup(u => u.GetProfileAsync(It.IsAny<string>()))
+            .ReturnsAsync(profile);
+
+    private void SetupIntent(OutfitIntentResult intent)
+        => _intentParser
+            .Setup(p => p.ParseAsync(It.IsAny<IReadOnlyList<OutfitChatMessageDto>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(intent);
+
+    private void SetupWeather(ResolvedWeatherContext? weather)
+        => _weatherService
+            .Setup(w => w.ResolveAsync(It.IsAny<OutfitIntentResult>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(weather);
+
+    private void SetupCityWeather(string city, ResolvedWeatherContext weather)
+        => _weatherService
+            .Setup(w => w.ResolveAsync(
+                It.Is<OutfitIntentResult>(intent => string.Equals(intent.Location, city, StringComparison.OrdinalIgnoreCase)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(weather);
+
+    private static OutfitIntentResult CompleteIntent() => new()
     {
-        private readonly IReadOnlyCollection<WardrobeItemDto> _items;
+        Intent = "generate_outfit",
+        IsInScope = true,
+        OccasionText = "weekend",
+        StyleBucket = "casual",
+        WeatherStatus = "sunny",
+        TemperatureC = 22
+    };
 
-        public FakeWardrobeService(IReadOnlyCollection<WardrobeItemDto> items)
-        {
-            _items = items;
-        }
-
-        public Task<IEnumerable<WardrobeItemDto>> GetAllItemsAsync(string userId)
-            => Task.FromResult<IEnumerable<WardrobeItemDto>>(_items);
-
-        public Task<WardrobeValidationDto> AnalyzeItemAsync(AnalyzeWardrobeItemRequest request)
-            => throw new NotSupportedException();
-
-        public Task<CreateWardrobeItemResponse> AddItemAsync(string userId, CreateWardrobeItemRequest request)
-            => throw new NotSupportedException();
-
-        public Task<bool> DeleteItemAsync(string userId, string itemId)
-            => throw new NotSupportedException();
-
-        public Task<int> DeleteItemsAsync(string userId, IReadOnlyCollection<string> itemIds)
-            => throw new NotSupportedException();
-    }
-
-    private sealed class FakeUserService : IUserService
+    private static ResolvedWeatherContext MildWeather() => new()
     {
-        private readonly UserProfileDto _profile;
+        Status = "sunny",
+        TemperatureC = 22,
+        ThermalBand = "warm",
+        Summary = "sunny, warm, 22C"
+    };
 
-        public FakeUserService(UserProfileDto profile)
-        {
-            _profile = profile;
-        }
+    private static List<WardrobeItemDto> CasualWomenWardrobe() =>
+    [
+        Item("top", "top", "shirt", color: "green"),
+        Item("bottom", "bottom", "jeans", color: "blue"),
+        Item("shoes", "shoes", "sneakers", color: "white")
+    ];
 
-        public Task<UserProfileDto> GetProfileAsync(string userId)
-            => Task.FromResult(_profile);
+    private static List<WardrobeItemDto> OfficeWomenWardrobe() =>
+    [
+        Item("1", "top", "shirt", color: "white", style: "office"),
+        Item("2", "bottom", "trousers", color: "black", style: "formal"),
+        Item("3", "shoes", "heels", color: "black", style: "elegant"),
+        Item("4", "outerwear", "blazer", color: "black", style: "office")
+    ];
 
-        public Task<UserProfileDto> UpdateProfileAsync(string userId, UpdateProfileRequest request)
-            => throw new NotSupportedException();
-
-        public UserDto MapToUserDto(User user)
-            => throw new NotSupportedException();
-
-        public UserProfileDto MapToProfileDto(User user)
-            => throw new NotSupportedException();
-    }
-
-    private sealed class FakeIntentParser : IOutfitIntentParser
+    private static WardrobeItemDto Item(
+        string id, string category, string? articleType, string? color = null, string style = "casual", string audience = "women") => new()
     {
-        private readonly OutfitIntentResult _result;
+        Id = id,
+        Category = category,
+        ArticleTypeLabel = articleType,
+        Style = style,
+        AudienceTag = audience,
+        Image = $"{id}.png",
+        Color = color,
+        ValidationStatus = "pass"
+    };
 
-        public FakeIntentParser(OutfitIntentResult result)
-        {
-            _result = result;
-        }
+    private static OutfitChatRequest Request(params OutfitChatMessageDto[] messages) => new() { Messages = [.. messages] };
 
-        public Task<OutfitIntentResult> ParseAsync(IReadOnlyList<OutfitChatMessageDto> messages, CancellationToken cancellationToken = default)
-            => Task.FromResult(_result);
-    }
-
-    private sealed class FakeWeatherService : IWeatherService
-    {
-        private readonly ResolvedWeatherContext? _result;
-
-        public FakeWeatherService(ResolvedWeatherContext? result)
-        {
-            _result = result;
-        }
-
-        public Task<ResolvedWeatherContext?> ResolveAsync(OutfitIntentResult intent, CancellationToken cancellationToken = default)
-            => Task.FromResult(_result);
-    }
-
-    private sealed class ConditionalWeatherService : IWeatherService
-    {
-        public Task<ResolvedWeatherContext?> ResolveAsync(OutfitIntentResult intent, CancellationToken cancellationToken = default)
-        {
-            if (string.Equals(intent.Location, "Brasov", StringComparison.OrdinalIgnoreCase))
-            {
-                return Task.FromResult<ResolvedWeatherContext?>(new ResolvedWeatherContext
-                {
-                    Source = "test",
-                    LocationLabel = "Brasov",
-                    Status = "cloudy",
-                    TemperatureC = 17,
-                    ThermalBand = "cool",
-                    Summary = "cloudy, cool, 17C"
-                });
-            }
-
-            return Task.FromResult<ResolvedWeatherContext?>(null);
-        }
-    }
-
-    private sealed class MilanWeatherService : IWeatherService
-    {
-        public Task<ResolvedWeatherContext?> ResolveAsync(OutfitIntentResult intent, CancellationToken cancellationToken = default)
-        {
-            if (string.Equals(intent.Location, "Milan", StringComparison.OrdinalIgnoreCase))
-            {
-                return Task.FromResult<ResolvedWeatherContext?>(new ResolvedWeatherContext
-                {
-                    Source = "test",
-                    LocationLabel = "Milan",
-                    Status = "sunny",
-                    TemperatureC = 24,
-                    ThermalBand = "warm",
-                    Summary = "sunny, warm, 24C"
-                });
-            }
-
-            return Task.FromResult<ResolvedWeatherContext?>(null);
-        }
-    }
+    private static OutfitChatMessageDto Msg(string role, string content) => new() { Role = role, Content = content };
 }
+
+// Covers: Unit, Parameterized, Behaviour, Guard-clause
