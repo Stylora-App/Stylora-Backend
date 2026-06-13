@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
 using Stylora.Application.Services;
@@ -16,129 +17,184 @@ public class ClothingValidationServiceTests
         MinimumMargin = 0.15
     };
 
-    [Fact]
-    public async Task ValidateAsync_ReturnsPass_WhenClothingNeighborsClearlyWin()
+    private readonly Mock<IImageEmbeddingService> _embeddingService = new();
+    private readonly Mock<IClothingReferenceEmbeddingRepository> _referenceRepository = new();
+    private readonly ClothingValidationService _service;
+
+    public ClothingValidationServiceTests()
     {
-        var service = new ClothingValidationService(
-            new FakeImageEmbeddingService(),
-            new FakeReferenceRepository(
-            [
-                Match(ClothingReferenceLabel.Clothing, "c1", 0.08),
-                Match(ClothingReferenceLabel.Clothing, "c2", 0.12),
-                Match(ClothingReferenceLabel.Clothing, "c3", 0.15),
-                Match(ClothingReferenceLabel.NonClothing, "n1", 0.42),
-                Match(ClothingReferenceLabel.NonClothing, "n2", 0.48),
-            ]),
+        _embeddingService
+            .Setup(s => s.EmbedImageAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([0.1f, 0.2f, 0.3f]);
+        _service = new ClothingValidationService(
+            _embeddingService.Object,
+            _referenceRepository.Object,
             Settings,
             NullLogger<ClothingValidationService>.Instance);
+    }
 
-        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+    [Fact]
+    public async Task ValidateAsync_ClothingNeighborsClearlyWin_ReturnsPass()
+    {
+        // Arrange
+        SetupNeighbors(
+        [
+            Match(ClothingReferenceLabel.Clothing, "c1", 0.08),
+            Match(ClothingReferenceLabel.Clothing, "c2", 0.12),
+            Match(ClothingReferenceLabel.Clothing, "c3", 0.15),
+            Match(ClothingReferenceLabel.NonClothing, "n1", 0.42),
+            Match(ClothingReferenceLabel.NonClothing, "n2", 0.48),
+        ]);
 
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+
+        // Assert
         Assert.Equal(ClothingValidationStatus.Pass, result.Status);
         Assert.True(result.IsLikelyClothing);
         Assert.True(result.Confidence >= 0.6);
     }
 
     [Fact]
-    public async Task ValidateAsync_ReturnsWarning_WhenNonClothingNeighborsWin()
+    public async Task ValidateAsync_NonClothingNeighborsWin_ReturnsWarning()
     {
-        var service = new ClothingValidationService(
-            new FakeImageEmbeddingService(),
-            new FakeReferenceRepository(
-            [
-                Match(ClothingReferenceLabel.NonClothing, "n1", 0.05),
-                Match(ClothingReferenceLabel.NonClothing, "n2", 0.08),
-                Match(ClothingReferenceLabel.NonClothing, "n3", 0.11),
-                Match(ClothingReferenceLabel.Clothing, "c1", 0.4),
-                Match(ClothingReferenceLabel.Clothing, "c2", 0.45),
-            ]),
-            Settings,
-            NullLogger<ClothingValidationService>.Instance);
+        // Arrange
+        SetupNeighbors(
+        [
+            Match(ClothingReferenceLabel.NonClothing, "n1", 0.05),
+            Match(ClothingReferenceLabel.NonClothing, "n2", 0.08),
+            Match(ClothingReferenceLabel.NonClothing, "n3", 0.11),
+            Match(ClothingReferenceLabel.Clothing, "c1", 0.4),
+            Match(ClothingReferenceLabel.Clothing, "c2", 0.45),
+        ]);
 
-        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
+        // Assert
         Assert.Equal(ClothingValidationStatus.Warning, result.Status);
         Assert.False(result.IsLikelyClothing);
         Assert.Contains("does not look like a clothing item", result.Message);
     }
 
     [Fact]
-    public async Task ValidateAsync_ReturnsWarning_WhenNeighborsAreAmbiguous()
+    public async Task ValidateAsync_NeighborsAreAmbiguous_ReturnsWarningWithLowConfidence()
     {
-        var service = new ClothingValidationService(
-            new FakeImageEmbeddingService(),
-            new FakeReferenceRepository(
-            [
-                Match(ClothingReferenceLabel.Clothing, "c1", 0.19),
-                Match(ClothingReferenceLabel.Clothing, "c2", 0.25),
-                Match(ClothingReferenceLabel.NonClothing, "n1", 0.21),
-                Match(ClothingReferenceLabel.NonClothing, "n2", 0.23),
-                Match(ClothingReferenceLabel.NonClothing, "n3", 0.3),
-            ]),
-            Settings,
-            NullLogger<ClothingValidationService>.Instance);
+        // Arrange
+        SetupNeighbors(
+        [
+            Match(ClothingReferenceLabel.Clothing, "c1", 0.19),
+            Match(ClothingReferenceLabel.Clothing, "c2", 0.25),
+            Match(ClothingReferenceLabel.NonClothing, "n1", 0.21),
+            Match(ClothingReferenceLabel.NonClothing, "n2", 0.23),
+            Match(ClothingReferenceLabel.NonClothing, "n3", 0.3),
+        ]);
 
-        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
+        // Assert
         Assert.Equal(ClothingValidationStatus.Warning, result.Status);
         Assert.True(result.Confidence < 0.6);
     }
 
-    [Fact]
-    public async Task ValidateAsync_PropagatesInvalidImageErrors()
+    [Theory]
+    [InlineData(5, 0, ClothingValidationStatus.Pass)]
+    [InlineData(3, 2, ClothingValidationStatus.Pass)]
+    [InlineData(2, 3, ClothingValidationStatus.Warning)]
+    [InlineData(0, 5, ClothingValidationStatus.Warning)]
+    public async Task ValidateAsync_NeighborLabelMixVariants_AppliesShareAndMarginThresholds(
+        int clothingCount, int nonClothingCount, ClothingValidationStatus expectedStatus)
     {
-        var service = new ClothingValidationService(
-            new ThrowingImageEmbeddingService(new ArgumentException("The uploaded image is not valid base64 data.")),
-            new FakeReferenceRepository([]),
-            Settings,
-            NullLogger<ClothingValidationService>.Instance);
+        // Arrange: equal distances make clothing share = clothing / total
+        var matches = Enumerable.Range(0, clothingCount)
+            .Select(i => Match(ClothingReferenceLabel.Clothing, $"c{i}", 0.2))
+            .Concat(Enumerable.Range(0, nonClothingCount)
+                .Select(i => Match(ClothingReferenceLabel.NonClothing, $"n{i}", 0.2)))
+            .ToList();
+        SetupNeighbors(matches);
 
-        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ValidateAsync("not-base64"));
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
+        // Assert
+        Assert.Equal(expectedStatus, result.Status);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_EmbeddingRejectsImage_PropagatesArgumentException()
+    {
+        // Arrange
+        _embeddingService
+            .Setup(s => s.EmbedImageAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ArgumentException("The uploaded image is not valid base64 data."));
+
+        // Act
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => _service.ValidateAsync("not-base64"));
+
+        // Assert
         Assert.Equal("The uploaded image is not valid base64 data.", exception.Message);
+        _referenceRepository.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task ValidateAsync_FallsBackToScan_WhenVectorSearchReturnsNoNeighbors()
+    public async Task ValidateAsync_EmbeddingWorkerStillStarting_ReturnsWarningInsteadOfFailing()
     {
-        var service = new ClothingValidationService(
-            new FakeImageEmbeddingService(),
-            new FakeReferenceRepository(
-                vectorMatches: [],
-                scanMatches:
-                [
-                    Match(ClothingReferenceLabel.Clothing, "c1", 0.09, categoryGroup: "top"),
-                    Match(ClothingReferenceLabel.Clothing, "c2", 0.12, categoryGroup: "top"),
-                    Match(ClothingReferenceLabel.NonClothing, "n1", 0.4),
-                ]),
-            Settings,
-            NullLogger<ClothingValidationService>.Instance);
+        // Arrange
+        _embeddingService
+            .Setup(s => s.EmbedImageAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TimeoutException("Worker startup timed out."));
 
-        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
-        Assert.Equal(ClothingValidationStatus.Pass, result.Status);
-        Assert.True(result.IsLikelyClothing);
-        Assert.Equal("top", result.SuggestedCategory);
+        // Assert
+        Assert.Equal(ClothingValidationStatus.Warning, result.Status);
+        Assert.False(result.IsLikelyClothing);
+        Assert.Contains("warming up", result.Message);
     }
 
     [Fact]
-    public async Task ValidateAsync_ReturnsMetadataSuggestions_FromClothingNeighbors()
+    public async Task ValidateAsync_VectorSearchReturnsNoNeighbors_FallsBackToScan()
     {
-        var service = new ClothingValidationService(
-            new FakeImageEmbeddingService(),
-            new FakeReferenceRepository(
+        // Arrange
+        SetupNeighbors(
+            vectorMatches: [],
+            scanMatches:
             [
-                Match(ClothingReferenceLabel.Clothing, "c1", 0.08, categoryGroup: "top", baseColour: "navy blue", colorFamily: "blue", usageTag: "casual", genderTag: "men"),
-                Match(ClothingReferenceLabel.Clothing, "c2", 0.12, categoryGroup: "top", baseColour: "navy blue", colorFamily: "blue", usageTag: "casual", genderTag: "men"),
-                Match(ClothingReferenceLabel.Clothing, "c3", 0.2, categoryGroup: "outerwear", baseColour: "black", colorFamily: "black", usageTag: "formal", genderTag: "men"),
-                Match(ClothingReferenceLabel.NonClothing, "n1", 0.43),
-                Match(ClothingReferenceLabel.NonClothing, "n2", 0.49),
-            ]),
-            Settings,
-            NullLogger<ClothingValidationService>.Instance);
+                Match(ClothingReferenceLabel.Clothing, "c1", 0.09, categoryGroup: "top"),
+                Match(ClothingReferenceLabel.Clothing, "c2", 0.12, categoryGroup: "top"),
+                Match(ClothingReferenceLabel.NonClothing, "n1", 0.4),
+            ]);
 
-        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
+        // Assert
+        Assert.Equal(ClothingValidationStatus.Pass, result.Status);
+        Assert.Equal("top", result.SuggestedCategory);
+        _referenceRepository.Verify(
+            r => r.GetNearestNeighborsByScanAsync(It.IsAny<float[]>(), Settings.TopK, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ClothingNeighborsCarryMetadata_ReturnsMetadataSuggestions()
+    {
+        // Arrange
+        SetupNeighbors(
+        [
+            Match(ClothingReferenceLabel.Clothing, "c1", 0.08, categoryGroup: "top", usageTag: "casual", genderTag: "men"),
+            Match(ClothingReferenceLabel.Clothing, "c2", 0.12, categoryGroup: "top", usageTag: "casual", genderTag: "men"),
+            Match(ClothingReferenceLabel.Clothing, "c3", 0.2, categoryGroup: "outerwear", usageTag: "formal", genderTag: "men"),
+            Match(ClothingReferenceLabel.NonClothing, "n1", 0.43),
+            Match(ClothingReferenceLabel.NonClothing, "n2", 0.49),
+        ]);
+
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+
+        // Assert
         Assert.Equal("top", result.SuggestedCategory);
         Assert.Equal("casual", result.SuggestedStyle);
         Assert.Equal("casual", result.SuggestedUsage);
@@ -146,61 +202,55 @@ public class ClothingValidationServiceTests
     }
 
     [Fact]
-    public async Task ValidateAsync_ReturnsWarning_WhenEmbeddingWorkerIsStillStarting()
+    public async Task ValidateAsync_EthnicUsageNeighborsPresent_IgnoresExcludedUsageForSuggestions()
     {
-        var service = new ClothingValidationService(
-            new ThrowingImageEmbeddingService(new TimeoutException("Worker startup timed out.")),
-            new FakeReferenceRepository([]),
-            Settings,
-            NullLogger<ClothingValidationService>.Instance);
+        // Arrange
+        SetupNeighbors(
+        [
+            Match(ClothingReferenceLabel.Clothing, "c1", 0.05, categoryGroup: "top", articleType: "kurtas", usageTag: "ethnic", genderTag: "women"),
+            Match(ClothingReferenceLabel.Clothing, "c2", 0.08, categoryGroup: "dress", articleType: "dresses", usageTag: "casual", genderTag: "women"),
+            Match(ClothingReferenceLabel.Clothing, "c3", 0.11, categoryGroup: "dress", articleType: "dresses", usageTag: "casual", genderTag: "women"),
+            Match(ClothingReferenceLabel.NonClothing, "n1", 0.45),
+        ]);
 
-        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
-        Assert.Equal(ClothingValidationStatus.Warning, result.Status);
-        Assert.False(result.IsLikelyClothing);
-        Assert.Contains("warming up", result.Message);
-    }
-
-    [Fact]
-    public async Task ValidateAsync_IgnoresExcludedEthnicUsage_WhenNonEthnicSuggestionsRemain()
-    {
-        var service = new ClothingValidationService(
-            new FakeImageEmbeddingService(),
-            new FakeReferenceRepository(
-            [
-                Match(ClothingReferenceLabel.Clothing, "c1", 0.05, categoryGroup: "top", articleType: "kurtas", usageTag: "ethnic", genderTag: "women"),
-                Match(ClothingReferenceLabel.Clothing, "c2", 0.08, categoryGroup: "dress", articleType: "dresses", usageTag: "casual", genderTag: "women"),
-                Match(ClothingReferenceLabel.Clothing, "c3", 0.11, categoryGroup: "dress", articleType: "dresses", usageTag: "casual", genderTag: "women"),
-                Match(ClothingReferenceLabel.NonClothing, "n1", 0.45),
-            ]),
-            Settings,
-            NullLogger<ClothingValidationService>.Instance);
-
-        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
-
+        // Assert
         Assert.Equal("dress", result.SuggestedCategory);
         Assert.Equal("dress", result.SuggestedArticleType);
         Assert.Equal("one_piece", result.SuggestedOutfitRole);
     }
 
     [Fact]
-    public async Task ValidateAsync_PrefersMenOverUnisex_WhenMenSignalClearlyWins()
+    public async Task ValidateAsync_MenSignalClearlyWins_PrefersMenOverUnisex()
     {
-        var service = new ClothingValidationService(
-            new FakeImageEmbeddingService(),
-            new FakeReferenceRepository(
-            [
-                Match(ClothingReferenceLabel.Clothing, "c1", 0.06, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "men"),
-                Match(ClothingReferenceLabel.Clothing, "c2", 0.07, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "men"),
-                Match(ClothingReferenceLabel.Clothing, "c3", 0.10, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "unisex"),
-                Match(ClothingReferenceLabel.NonClothing, "n1", 0.40),
-            ]),
-            Settings,
-            NullLogger<ClothingValidationService>.Instance);
+        // Arrange
+        SetupNeighbors(
+        [
+            Match(ClothingReferenceLabel.Clothing, "c1", 0.06, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "men"),
+            Match(ClothingReferenceLabel.Clothing, "c2", 0.07, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "men"),
+            Match(ClothingReferenceLabel.Clothing, "c3", 0.10, categoryGroup: "top", articleType: "shirts", usageTag: "casual", genderTag: "unisex"),
+            Match(ClothingReferenceLabel.NonClothing, "n1", 0.40),
+        ]);
 
-        var result = await service.ValidateAsync("data:image/png;base64,aGVsbG8=");
+        // Act
+        var result = await _service.ValidateAsync("data:image/png;base64,aGVsbG8=");
 
+        // Assert
         Assert.Equal("men", result.SuggestedGender);
+    }
+
+    private void SetupNeighbors(
+        IReadOnlyList<ClothingReferenceMatch> vectorMatches,
+        IReadOnlyList<ClothingReferenceMatch>? scanMatches = null)
+    {
+        _referenceRepository
+            .Setup(r => r.GetNearestNeighborsAsync(It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(vectorMatches);
+        _referenceRepository
+            .Setup(r => r.GetNearestNeighborsByScanAsync(It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(scanMatches ?? vectorMatches);
     }
 
     private static ClothingReferenceMatch Match(
@@ -209,8 +259,6 @@ public class ClothingValidationServiceTests
         double distance,
         string? categoryGroup = null,
         string? articleType = null,
-        string? baseColour = null,
-        string? colorFamily = null,
         string? usageTag = null,
         string? genderTag = null)
         => new(
@@ -222,49 +270,12 @@ public class ClothingValidationServiceTests
             null,
             articleType,
             categoryGroup,
-            baseColour,
-            colorFamily,
+            null,
+            null,
             null,
             usageTag,
             null,
             distance);
-
-    private sealed class FakeImageEmbeddingService : IImageEmbeddingService
-    {
-        public Task<float[]> EmbedImageAsync(string imageBase64, CancellationToken cancellationToken = default)
-            => Task.FromResult(new[] { 0.1f, 0.2f, 0.3f });
-    }
-
-    private sealed class ThrowingImageEmbeddingService : IImageEmbeddingService
-    {
-        private readonly Exception _exception;
-
-        public ThrowingImageEmbeddingService(Exception exception)
-        {
-            _exception = exception;
-        }
-
-        public Task<float[]> EmbedImageAsync(string imageBase64, CancellationToken cancellationToken = default)
-            => Task.FromException<float[]>(_exception);
-    }
-
-    private sealed class FakeReferenceRepository : IClothingReferenceEmbeddingRepository
-    {
-        private readonly IReadOnlyList<ClothingReferenceMatch> _vectorMatches;
-        private readonly IReadOnlyList<ClothingReferenceMatch> _scanMatches;
-
-        public FakeReferenceRepository(
-            IReadOnlyList<ClothingReferenceMatch> vectorMatches,
-            IReadOnlyList<ClothingReferenceMatch>? scanMatches = null)
-        {
-            _vectorMatches = vectorMatches;
-            _scanMatches = scanMatches ?? vectorMatches;
-        }
-
-        public Task<IReadOnlyList<ClothingReferenceMatch>> GetNearestNeighborsAsync(float[] embedding, int count, CancellationToken cancellationToken = default)
-            => Task.FromResult(_vectorMatches);
-
-        public Task<IReadOnlyList<ClothingReferenceMatch>> GetNearestNeighborsByScanAsync(float[] embedding, int count, CancellationToken cancellationToken = default)
-            => Task.FromResult(_scanMatches);
-    }
 }
+
+// Covers: Unit, Parameterized, Behaviour, Guard-clause

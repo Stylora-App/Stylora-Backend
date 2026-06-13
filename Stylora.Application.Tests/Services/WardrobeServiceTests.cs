@@ -1,3 +1,4 @@
+using Moq;
 using Stylora.Application.DTOs;
 using Stylora.Application.Interfaces;
 using Stylora.Application.Models;
@@ -10,144 +11,118 @@ namespace Stylora.Application.Tests.Services;
 
 public class WardrobeServiceTests
 {
-    [Fact]
-    public async Task AddItemAsync_SavesImmediately_WhenValidationPasses()
-    {
-        var repository = new FakeWardrobeRepository();
-        var service = new WardrobeService(
-            repository,
-            new FakeClothingValidationService(new ClothingImageValidationResult
-            {
-                Status = ClothingValidationStatus.Pass,
-                IsLikelyClothing = true,
-                Confidence = 0.91,
-                Message = "ok",
-                NearestLabels = ["clothing"]
-            }));
+    private readonly Mock<IWardrobeRepository> _repository = new();
+    private readonly Mock<IClothingValidationService> _validator = new();
+    private readonly WardrobeService _service;
+    private WardrobeItem? _savedItem;
 
-        var response = await service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
+    public WardrobeServiceTests()
+    {
+        _repository
+            .Setup(r => r.AddItemAsync(It.IsAny<string>(), It.IsAny<WardrobeItem>()))
+            .Callback<string, WardrobeItem>((_, item) =>
+            {
+                item.Id = Guid.NewGuid();
+                _savedItem = item;
+            })
+            .ReturnsAsync((string _, WardrobeItem item) => item);
+        _repository
+            .Setup(r => r.ResolveColorAsync(It.IsAny<string?>()))
+            .ReturnsAsync((string? name) => string.IsNullOrWhiteSpace(name)
+                ? null
+                : new Color { Id = Guid.NewGuid(), Name = name.Trim().ToLowerInvariant() });
+        _service = new WardrobeService(_repository.Object, _validator.Object);
+    }
+
+    [Fact]
+    public async Task AddItemAsync_ValidationPasses_SavesItemImmediately()
+    {
+        // Arrange
+        SetupValidation(PassResult());
+
+        // Act
+        var response = await _service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
         {
             Image = "data:image/png;base64,aGVsbG8=",
             Category = "top"
         });
 
+        // Assert
         Assert.NotNull(response.Item);
-        Assert.NotNull(response.Validation);
-        Assert.Single(repository.Items);
         Assert.Equal("pass", response.Item!.ValidationStatus);
+        _repository.Verify(r => r.AddItemAsync(It.IsAny<string>(), It.IsAny<WardrobeItem>()), Times.Once);
     }
 
     [Fact]
-    public async Task AddItemAsync_ReturnsWarningWithoutSaving_WhenOverrideIsFalse()
+    public async Task AddItemAsync_WarningWithoutOverride_ReturnsValidationWithoutSaving()
     {
-        var repository = new FakeWardrobeRepository();
-        var service = new WardrobeService(
-            repository,
-            new FakeClothingValidationService(new ClothingImageValidationResult
-            {
-                Status = ClothingValidationStatus.Warning,
-                IsLikelyClothing = false,
-                Confidence = 0.87,
-                Message = "warning",
-                NearestLabels = ["non_clothing"]
-            }));
+        // Arrange
+        SetupValidation(WarningResult());
 
-        var response = await service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
+        // Act
+        var response = await _service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
         {
             Image = "data:image/png;base64,aGVsbG8=",
-            Category = "top",
             OverrideValidationWarning = false
         });
 
+        // Assert
         Assert.Null(response.Item);
         Assert.NotNull(response.Validation);
-        Assert.Empty(repository.Items);
+        Assert.True(response.Validation!.CanOverride);
+        _repository.Verify(r => r.AddItemAsync(It.IsAny<string>(), It.IsAny<WardrobeItem>()), Times.Never);
     }
 
     [Fact]
-    public async Task AddItemAsync_SavesWarningResult_WhenOverrideIsTrue()
+    public async Task AddItemAsync_WarningWithOverride_SavesItemWithWarningStatus()
     {
-        var repository = new FakeWardrobeRepository();
-        var service = new WardrobeService(
-            repository,
-            new FakeClothingValidationService(new ClothingImageValidationResult
-            {
-                Status = ClothingValidationStatus.Warning,
-                IsLikelyClothing = true,
-                Confidence = 0.58,
-                Message = "warning",
-                NearestLabels = ["clothing", "non_clothing"]
-            }));
+        // Arrange
+        SetupValidation(WarningResult());
 
-        var response = await service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
+        // Act
+        var response = await _service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
         {
             Image = "data:image/png;base64,aGVsbG8=",
-            Category = "top",
             OverrideValidationWarning = true
         });
 
+        // Assert
         Assert.NotNull(response.Item);
-        Assert.Equal(ClothingValidationStatus.Warning, repository.Items.Single().ValidationStatus);
+        Assert.Equal(ClothingValidationStatus.Warning, _savedItem!.ValidationStatus);
         Assert.Equal("warning", response.Validation!.Status);
     }
 
     [Fact]
-    public async Task AddItemAsync_UsesSuggestedMetadata_WhenRequestOmitsManualFields()
+    public async Task AddItemAsync_RequestOmitsManualFields_UsesSuggestedMetadata()
     {
-        var repository = new FakeWardrobeRepository();
-        var service = new WardrobeService(
-            repository,
-            new FakeClothingValidationService(new ClothingImageValidationResult
-            {
-                Status = ClothingValidationStatus.Pass,
-                IsLikelyClothing = true,
-                Confidence = 0.97,
-                Message = "ok",
-                NearestLabels = ["clothing"],
-                SuggestedCategory = "outerwear",
-                SuggestedStyle = "casual",
-                SuggestedColor = "navy blue",
-                SuggestedGender = "women",
-                SuggestedArticleType = "jacket",
-                SuggestedOutfitRole = "layer"
-            }));
+        // Arrange
+        SetupValidation(PassResult(
+            category: "outerwear", articleType: "jacket", style: "casual",
+            color: "navy blue", gender: "women", outfitRole: "layer"));
 
-        var response = await service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
+        // Act
+        var response = await _service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
         {
             Image = "data:image/png;base64,aGVsbG8="
         });
 
-        var saved = Assert.Single(repository.Items);
-        Assert.Equal(ClothingCategory.Outerwear, saved.Category);
-        Assert.Equal(StylePreference.Casual, saved.Style);
-        Assert.Equal("navy blue", saved.Color?.Name);
-        Assert.Equal("women", saved.AudienceTag);
-        Assert.Equal("jacket", saved.ArticleTypeLabel);
-        Assert.Equal("outerwear", response.Item!.Category);
-        Assert.Equal("navy blue", response.Item.Color);
-        Assert.Equal("layer", response.Item.OutfitRole);
+        // Assert
+        Assert.Equal(ClothingCategory.Outerwear, _savedItem!.Category);
+        Assert.Equal(StylePreference.Casual, _savedItem.Style);
+        Assert.Equal("navy blue", _savedItem.Color?.Name);
+        Assert.Equal("women", _savedItem.AudienceTag);
+        Assert.Equal("jacket", _savedItem.ArticleTypeLabel);
+        Assert.Equal("layer", response.Item!.OutfitRole);
     }
 
     [Fact]
-    public async Task AddItemAsync_UsesManualOverrideTags_WhenRequestProvidesThem()
+    public async Task AddItemAsync_RequestProvidesManualTags_OverridesSuggestions()
     {
-        var repository = new FakeWardrobeRepository();
-        var service = new WardrobeService(
-            repository,
-            new FakeClothingValidationService(new ClothingImageValidationResult
-            {
-                Status = ClothingValidationStatus.Pass,
-                IsLikelyClothing = true,
-                Confidence = 0.82,
-                Message = "ok",
-                NearestLabels = ["clothing"],
-                SuggestedCategory = "top",
-                SuggestedArticleType = "shirt",
-                SuggestedGender = "unisex",
-                SuggestedColor = "red"
-            }));
+        // Arrange
+        SetupValidation(PassResult(category: "top", articleType: "shirt", gender: "unisex", color: "red"));
 
-        var response = await service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
+        // Act
+        var response = await _service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
         {
             Image = "data:image/png;base64,aGVsbG8=",
             Category = "outerwear",
@@ -157,85 +132,140 @@ public class WardrobeServiceTests
             Color = "charcoal"
         });
 
-        var saved = Assert.Single(repository.Items);
-        Assert.Equal("blazer", saved.ArticleTypeLabel);
-        Assert.Equal("men", saved.AudienceTag);
-        Assert.Equal(StylePreference.Formal, saved.Style);
-        Assert.Equal("charcoal", saved.Color?.Name);
+        // Assert
+        Assert.Equal("blazer", _savedItem!.ArticleTypeLabel);
+        Assert.Equal("men", _savedItem.AudienceTag);
+        Assert.Equal(StylePreference.Formal, _savedItem.Style);
+        Assert.Equal("charcoal", _savedItem.Color?.Name);
         Assert.Equal("layer", response.Item!.OutfitRole);
     }
 
+    [Theory]
+    [InlineData("outerwear", ClothingCategory.Outerwear)]
+    [InlineData("DRESS", ClothingCategory.Dress)]
+    [InlineData("nonsense", ClothingCategory.Top)]
+    public async Task AddItemAsync_CategoryInputVariants_ResolvesCategoryWithTopFallback(string category, ClothingCategory expected)
+    {
+        // Arrange
+        SetupValidation(PassResult());
+
+        // Act
+        await _service.AddItemAsync(Guid.NewGuid().ToString(), new CreateWardrobeItemRequest
+        {
+            Image = "data:image/png;base64,aGVsbG8=",
+            Category = category
+        });
+
+        // Assert
+        Assert.Equal(expected, _savedItem!.Category);
+    }
+
     [Fact]
-    public async Task DeleteItemsAsync_DeletesOnlyRequestedItems()
+    public async Task AnalyzeItemAsync_WarningResult_MapsValidationWithOverrideFlag()
     {
-        var repository = new FakeWardrobeRepository();
-        var first = new WardrobeItem { Id = Guid.NewGuid() };
-        var second = new WardrobeItem { Id = Guid.NewGuid() };
-        var third = new WardrobeItem { Id = Guid.NewGuid() };
-        repository.Items.AddRange([first, second, third]);
+        // Arrange
+        SetupValidation(WarningResult());
 
-        var service = new WardrobeService(
-            repository,
-            new FakeClothingValidationService(new ClothingImageValidationResult()));
+        // Act
+        var validation = await _service.AnalyzeItemAsync(new AnalyzeWardrobeItemRequest { Image = "data:image/png;base64,aGVsbG8=" });
 
-        var deleted = await service.DeleteItemsAsync(Guid.NewGuid().ToString(), [first.Id.ToString(), third.Id.ToString()]);
+        // Assert
+        Assert.Equal("warning", validation.Status);
+        Assert.True(validation.CanOverride);
+        _validator.Verify(v => v.ValidateAsync("data:image/png;base64,aGVsbG8=", It.IsAny<CancellationToken>()), Times.Once);
+    }
 
+    [Fact]
+    public async Task GetAllItemsAsync_ItemsExist_MapsEntitiesToDtos()
+    {
+        // Arrange
+        var userId = Guid.NewGuid().ToString();
+        _repository
+            .Setup(r => r.GetAllItemsAsync(userId))
+            .ReturnsAsync(
+            [
+                new WardrobeItem
+                {
+                    Id = Guid.NewGuid(),
+                    Category = ClothingCategory.Shoes,
+                    Style = StylePreference.Sport,
+                    Color = new Color { Name = "white", HexCode = "#FFFFFF" }
+                }
+            ]);
+
+        // Act
+        var items = (await _service.GetAllItemsAsync(userId)).ToList();
+
+        // Assert
+        var dto = Assert.Single(items);
+        Assert.Equal("shoes", dto.Category);
+        Assert.Equal("sport", dto.Style);
+        Assert.Equal("#FFFFFF", dto.Color);
+    }
+
+    [Fact]
+    public async Task DeleteItemsAsync_EmptyIdList_ReturnsZeroWithoutCallingRepository()
+    {
+        // Act
+        var deleted = await _service.DeleteItemsAsync(Guid.NewGuid().ToString(), []);
+
+        // Assert
+        Assert.Equal(0, deleted);
+        _repository.Verify(r => r.DeleteItemsAsync(It.IsAny<string>(), It.IsAny<IEnumerable<string>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteItemsAsync_IdsProvided_DelegatesToRepository()
+    {
+        // Arrange
+        var userId = Guid.NewGuid().ToString();
+        var ids = new[] { Guid.NewGuid().ToString(), Guid.NewGuid().ToString() };
+        _repository
+            .Setup(r => r.DeleteItemsAsync(userId, ids))
+            .ReturnsAsync(2);
+
+        // Act
+        var deleted = await _service.DeleteItemsAsync(userId, ids);
+
+        // Assert
         Assert.Equal(2, deleted);
-        Assert.Single(repository.Items);
-        Assert.Equal(second.Id, repository.Items.Single().Id);
+        _repository.Verify(r => r.DeleteItemsAsync(userId, ids), Times.Once);
     }
 
-    private sealed class FakeClothingValidationService : IClothingValidationService
+    private void SetupValidation(ClothingImageValidationResult result)
+        => _validator
+            .Setup(v => v.ValidateAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
+
+    private static ClothingImageValidationResult PassResult(
+        string? category = null,
+        string? articleType = null,
+        string? style = null,
+        string? color = null,
+        string? gender = null,
+        string? outfitRole = null) => new()
     {
-        private readonly ClothingImageValidationResult _result;
+        Status = ClothingValidationStatus.Pass,
+        IsLikelyClothing = true,
+        Confidence = 0.93,
+        Message = "ok",
+        NearestLabels = ["clothing"],
+        SuggestedCategory = category,
+        SuggestedArticleType = articleType,
+        SuggestedStyle = style,
+        SuggestedColor = color,
+        SuggestedGender = gender,
+        SuggestedOutfitRole = outfitRole
+    };
 
-        public FakeClothingValidationService(ClothingImageValidationResult result)
-        {
-            _result = result;
-        }
-
-        public Task<ClothingImageValidationResult> ValidateAsync(string imageBase64, CancellationToken cancellationToken = default)
-            => Task.FromResult(_result);
-    }
-
-    private sealed class FakeWardrobeRepository : IWardrobeRepository
+    private static ClothingImageValidationResult WarningResult() => new()
     {
-        public List<WardrobeItem> Items { get; } = [];
-
-        public Task<WardrobeItem> AddItemAsync(string userId, WardrobeItem item)
-        {
-            item.Id = Guid.NewGuid();
-            Items.Add(item);
-            return Task.FromResult(item);
-        }
-
-        public Task<bool> DeleteItemAsync(string userId, string itemId)
-        {
-            var removed = Items.RemoveAll(item => item.Id.ToString() == itemId);
-            return Task.FromResult(removed > 0);
-        }
-
-        public Task<int> DeleteItemsAsync(string userId, IEnumerable<string> itemIds)
-        {
-            var ids = itemIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var removed = Items.RemoveAll(item => ids.Contains(item.Id.ToString()));
-            return Task.FromResult(removed);
-        }
-
-        public Task<IEnumerable<WardrobeItem>> GetAllItemsAsync(string userId)
-            => Task.FromResult<IEnumerable<WardrobeItem>>(Items);
-
-        public Task<WardrobeItem?> GetItemByIdAsync(string userId, string itemId)
-            => Task.FromResult<WardrobeItem?>(Items.FirstOrDefault());
-
-        public Task<Color?> ResolveColorAsync(string? colorName)
-            => Task.FromResult<Color?>(string.IsNullOrWhiteSpace(colorName) ? null : new Color
-            {
-                Id = Guid.NewGuid(),
-                Name = colorName.Trim().ToLowerInvariant()
-            });
-
-        public Task<WardrobeItem?> UpdateItemAsync(string userId, WardrobeItem item)
-            => Task.FromResult<WardrobeItem?>(item);
-    }
+        Status = ClothingValidationStatus.Warning,
+        IsLikelyClothing = false,
+        Confidence = 0.81,
+        Message = "warning",
+        NearestLabels = ["non_clothing"]
+    };
 }
+
+// Covers: Unit, Parameterized, Behaviour, Guard-clause
