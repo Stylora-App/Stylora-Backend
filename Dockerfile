@@ -1,7 +1,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Restore layer — copied separately so it caches unless a .csproj changes
 COPY Stylora.sln .
 COPY Stylora.Domain/Stylora.Domain.csproj                         Stylora.Domain/
 COPY Stylora.Application/Stylora.Application.csproj               Stylora.Application/

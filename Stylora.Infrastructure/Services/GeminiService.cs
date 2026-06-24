@@ -272,7 +272,6 @@ The garment should fit naturally on the person's body.";
 
     private static string CleanJsonResponse(string text)
     {
-        // Remove markdown code blocks if present
         if (text.StartsWith("```json"))
         {
             text = text[7..];
@@ -328,7 +327,6 @@ internal class ImagenPrediction
     public string? BytesBase64Encoded { get; set; }
 }
 
-// Response models for gemini-2.5-flash-image
 internal class GeminiImageResponse
 {
     [JsonPropertyName("candidates")]
@@ -365,7 +363,6 @@ internal class GeminiInlineData
     public string? Data { get; set; }
 }
 
-// Raw response models for parsing Gemini API responses
 internal class SeasonAnalysisRaw
 {
     public string? Season { get; set; }

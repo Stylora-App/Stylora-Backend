@@ -38,7 +38,6 @@ public class JwtService(string secret)
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    // Returns the user's ID if the token is a valid, unexpired refresh JWT; otherwise throws.
     public Guid ValidateRefreshToken(string token)
     {
         var handler = new JwtSecurityTokenHandler();

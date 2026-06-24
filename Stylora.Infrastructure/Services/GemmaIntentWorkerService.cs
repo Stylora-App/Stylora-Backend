@@ -120,7 +120,6 @@ public sealed class GemmaIntentWorkerService : IOutfitIntentParser
         ParserSource = GetEnumMemberValue(r.Parser_source)
     };
 
-    // Reads [EnumMember(Value = "...")] to recover the original JSON string from a generated enum value.
     private static string GetEnumMemberValue<T>(T value) where T : struct, Enum
     {
         var field = typeof(T).GetField(value.ToString());
