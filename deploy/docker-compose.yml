@@ -34,8 +34,6 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-    volumes:
-      - stylora-clothing-seed:/data/clothing-validation
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
     networks: [stylora-net, stylora-ai-net]
@@ -52,8 +50,6 @@ services:
 
 volumes:
   stylora-pg-data:
-    external: true
-  stylora-clothing-seed:
     external: true
 
 networks:

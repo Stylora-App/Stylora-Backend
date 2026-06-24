@@ -1,3 +1,12 @@
+# ── Clothing validation seed data ───────────────────────────────────────────
+FROM alpine:3.20 AS clothing-seed
+ADD --checksum=sha256:cf35d135954076d842c036ceea981f761fb97f4e7c855a1bb513d935409f47bf \
+    https://github.com/Stylora-App/Stylora-AI/releases/download/clothing-validation-seed-v1/clothing-validation-seed.tar.gz \
+    /tmp/clothing-validation-seed.tar.gz
+RUN mkdir -p /data/clothing-validation && \
+    tar -xzf /tmp/clothing-validation-seed.tar.gz -C /data/clothing-validation && \
+    rm /tmp/clothing-validation-seed.tar.gz
+
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
@@ -30,6 +39,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
 
 COPY --from=publish /app/publish .
+COPY --from=clothing-seed /data/clothing-validation /data/clothing-validation
 
 ENV ClothingValidation__SeedDirectoryPath=/data/clothing-validation
 ENV ASPNETCORE_URLS=http://+:8080
